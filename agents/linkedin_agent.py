@@ -121,7 +121,7 @@ def _marquer_utilisee(nom):
 
 def choisir_photo(theme_fr, theme_en):
     photos_dir = Path(PHOTOS_DIR)
-    photos_dir.mkdir(exist_ok=True)
+    photos_dir.mkdir(parents=True, exist_ok=True)
 
     extensions = [".jpg", ".jpeg", ".png", ".webp"]
     toutes = [
@@ -327,7 +327,7 @@ class LinkedInAgent:
             await asyncio.sleep(delay / 1000)
 
     async def debug(self, page, name):
-        Path("debug").mkdir(exist_ok=True)
+        Path("debug").mkdir(parents=True, exist_ok=True)
         path = f"debug/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{name}.png"
         try:
             await page.screenshot(path=path, full_page=True)
@@ -749,7 +749,7 @@ class LinkedInAgent:
 # ============================================================
 
 def sauvegarder_post(post_text, image_path, succes):
-    Path("posts_publies").mkdir(exist_ok=True)
+    Path("posts_publies").mkdir(parents=True, exist_ok=True)
     date   = datetime.now().strftime("%Y%m%d_%H%M%S")
     statut = "OK" if succes else "ECHEC"
     path   = f"posts_publies/{date}_{statut}.txt"

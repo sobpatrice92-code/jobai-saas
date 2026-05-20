@@ -244,7 +244,7 @@ class ProfileOptimizer:
         await asyncio.sleep(random.randint(a, b) / 1000)
 
     async def screenshot(self, page, nom):
-        DEBUG_DIR.mkdir(exist_ok=True)
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
         try:
             path = DEBUG_DIR / f"{datetime.now().strftime('%H%M%S')}_{nom}.png"
             await page.screenshot(path=str(path), full_page=False)

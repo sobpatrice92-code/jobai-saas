@@ -187,7 +187,7 @@ def _nom_fichier_safe(s):
     return re.sub(r'[<>:"/\\|?*()\[\]]', '', s).replace(' ', '_').strip('._')[:30]
 
 def sauvegarder_pdf(texte, entreprise):
-    Path(OUTPUT_DIR).mkdir(exist_ok=True)
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     date   = datetime.now().strftime("%Y%m%d_%H%M%S")
     nom_f  = f"CV_{_nom_fichier_safe(entreprise)}_{date}.pdf"
     chemin = Path(OUTPUT_DIR) / nom_f
@@ -231,7 +231,7 @@ def sauvegarder_pdf(texte, entreprise):
 # ============================================================
 
 def sauvegarder_txt(texte, entreprise):
-    Path(OUTPUT_DIR).mkdir(exist_ok=True)
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     date   = datetime.now().strftime("%Y%m%d_%H%M%S")
     nom_f  = f"CV_{_nom_fichier_safe(entreprise)}_{date}.txt"
     chemin = Path(OUTPUT_DIR) / nom_f

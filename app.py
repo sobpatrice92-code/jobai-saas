@@ -175,7 +175,8 @@ def run_agent(agent_id):
     cfg = models.get_config(uid)
     user = models.get_user(uid)
 
-    user_profile_dir = str(UPLOAD_FOLDER / str(uid) / "chrome_profile")
+    user_profile_dir = UPLOAD_FOLDER / str(uid) / "chrome_profile"
+    user_profile_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env.update({
         # Clé OpenAI = celle du serveur (l'utilisateur ne la fournit pas)
@@ -190,7 +191,7 @@ def run_agent(agent_id):
         "USER_KEYWORDS":     cfg.get("keywords",""),
         "USER_PROFESSION":   cfg.get("profession",""),
         "USER_EMAIL":        cfg.get("gmail_address",""),
-        "PROFILE_PATH":      cfg.get("linkedin_profile_path", user_profile_dir),
+        "PROFILE_PATH":      cfg.get("linkedin_profile_path", str(user_profile_dir)),
     })
 
     try:

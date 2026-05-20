@@ -145,7 +145,7 @@ def chercher_linkedin(keyword, location):
 # ============================================================
 
 def sauvegarder_csv(offres):
-    Path(OUTPUT_DIR).mkdir(exist_ok=True)
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     existe = Path(CSV_FILE).exists()
 
     with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:

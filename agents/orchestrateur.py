@@ -304,7 +304,7 @@ def envoyer_email_candidature(offre, lettre, email_dest=None):
         return False
 
 def sauvegarder_suivi(offre, statut, plateforme="LinkedIn"):
-    Path(OUTPUT_DIR).mkdir(exist_ok=True)
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     csv_path = Path(OUTPUT_DIR) / "suivi_candidatures.csv"
     ecrire_entete = True
     if csv_path.exists():
