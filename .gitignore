@@ -1,0 +1,11 @@
+.env
+*.db
+uploads/
+user_data/
+__pycache__/
+*.pyc
+*.pyo
+debug_profile/
+logs/
+*.log
+.DS_Store

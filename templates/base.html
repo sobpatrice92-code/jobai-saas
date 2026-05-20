@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>JobAI — {% block title %}{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <style>
+    :root { --sw: 240px; }
+    body { background:#F1F5F9; font-family:'Segoe UI',sans-serif; }
+    #sidebar { position:fixed; top:0; left:0; height:100vh; width:var(--sw);
+      background:#0F172A; display:flex; flex-direction:column; z-index:100; }
+    .sb-brand { padding:22px 20px 16px; border-bottom:1px solid #1E293B; }
+    .sb-brand h5 { color:#fff; margin:0; font-weight:800; }
+    .sb-brand small { color:#64748B; font-size:.75rem; }
+    .sb-nav { flex:1; padding:14px 0; overflow-y:auto; }
+    .sb-section { color:#475569; font-size:.65rem; font-weight:700;
+      letter-spacing:.08em; text-transform:uppercase; padding:14px 20px 6px; }
+    .sb-link { display:flex; align-items:center; gap:10px; padding:10px 20px;
+      color:#94A3B8; text-decoration:none; font-size:.875rem; transition:all .2s; }
+    .sb-link:hover { color:#fff; background:#1E293B; }
+    .sb-link.active { color:#fff; background:#4F46E5; border-right:3px solid #818CF8; }
+    .sb-link i { width:18px; text-align:center; }
+    .sb-footer { padding:14px 20px; border-top:1px solid #1E293B; }
+    .avatar { width:32px; height:32px; border-radius:50%; background:#4F46E5;
+      display:flex; align-items:center; justify-content:center;
+      color:#fff; font-weight:800; font-size:.85rem; flex-shrink:0; }
+    #main { margin-left:var(--sw); min-height:100vh; }
+    .topbar { background:#fff; padding:13px 28px; border-bottom:1px solid #E2E8F0;
+      display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; }
+    .topbar h4 { margin:0; font-size:1.05rem; font-weight:800; color:#0F172A; }
+    .page { padding:26px; }
+    .card-stat { background:#fff; border-radius:12px; padding:20px 22px;
+      border:1px solid #E2E8F0; }
+    .card-stat:hover { box-shadow:0 4px 18px rgba(0,0,0,.07); }
+    .stat-label { font-size:.7rem; color:#64748B; text-transform:uppercase;
+      letter-spacing:.06em; font-weight:700; }
+    .stat-value { font-size:2rem; font-weight:900; color:#0F172A; line-height:1.1; }
+    .stat-icon { width:42px; height:42px; border-radius:10px;
+      display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+    .agent-card { background:#fff; border-radius:12px; padding:18px; border:1px solid #E2E8F0; }
+    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .dot.on { background:#10B981; box-shadow:0 0 0 3px rgba(16,185,129,.2); }
+    .dot.off { background:#CBD5E1; }
+    #terminal { background:#0F172A; color:#94A3B8; font-family:Consolas,monospace;
+      font-size:.78rem; border-radius:10px; padding:14px; height:300px;
+      overflow-y:auto; line-height:1.7; }
+    .tbl th { background:#F8FAFC; color:#475569; font-size:.7rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:.05em; }
+    .tbl td { font-size:.82rem; vertical-align:middle; }
+    .badge-ok  { background:#D1FAE5; color:#065F46; border-radius:99px; padding:2px 8px; font-size:.7rem; font-weight:700; }
+    .badge-ko  { background:#FEE2E2; color:#991B1B; border-radius:99px; padding:2px 8px; font-size:.7rem; font-weight:700; }
+    .badge-warn{ background:#FEF3C7; color:#92400E; border-radius:99px; padding:2px 8px; font-size:.7rem; font-weight:700; }
+    .badge-inf { background:#DBEAFE; color:#1E40AF; border-radius:99px; padding:2px 8px; font-size:.7rem; font-weight:700; }
+    [contenteditable]:focus { outline:2px solid #4F46E5; border-radius:4px; }
+    @media(max-width:768px) { #sidebar{display:none;} #main{margin-left:0;} }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<nav id="sidebar">
+  <div class="sb-brand">
+    <h5>🤖 JobAI</h5>
+    <small>{{ current_user.name }}</small>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-section">Principal</div>
+    <a href="{{ url_for('dashboard') }}" class="sb-link {% if active=='dashboard' %}active{% endif %}">
+      <i class="bi bi-speedometer2"></i> Dashboard
+    </a>
+    <a href="{{ url_for('agents') }}" class="sb-link {% if active=='agents' %}active{% endif %}">
+      <i class="bi bi-cpu"></i> Agents IA
+    </a>
+    <a href="{{ url_for('candidatures') }}" class="sb-link {% if active=='candidatures' %}active{% endif %}">
+      <i class="bi bi-table"></i> Candidatures
+    </a>
+    <div class="sb-section">Compte</div>
+    <a href="{{ url_for('settings') }}" class="sb-link {% if active=='settings' %}active{% endif %}">
+      <i class="bi bi-gear"></i> Paramètres
+    </a>
+    <a href="{{ url_for('logout') }}" class="sb-link">
+      <i class="bi bi-box-arrow-left"></i> Déconnexion
+    </a>
+  </div>
+  {% if trial_plan == 'trial' %}
+  <div style="padding:10px 16px;border-top:1px solid #1E293B;">
+    {% if trial_actif %}
+    <div style="background:#1E293B;border-radius:8px;padding:8px 12px;text-align:center;">
+      <div style="color:#10B981;font-size:.7rem;font-weight:700;">ESSAI GRATUIT</div>
+      <div style="color:#94A3B8;font-size:.68rem;">{{ trial_jours }} jours restants</div>
+    </div>
+    {% else %}
+    <div style="background:#7F1D1D;border-radius:8px;padding:8px 12px;text-align:center;">
+      <div style="color:#FCA5A5;font-size:.7rem;font-weight:700;">ESSAI EXPIRÉ</div>
+      <div style="color:#FCA5A5;font-size:.68rem;">Passez au Pro</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="sb-footer d-flex align-items-center gap-2">
+    <div class="avatar">{{ current_user.name[0].upper() }}</div>
+    <div>
+      <div style="color:#fff; font-size:.78rem; font-weight:700;">{{ current_user.name[:20] }}</div>
+      <div style="color:#64748B; font-size:.7rem;">{{ current_user.email[:25] }}</div>
+    </div>
+  </div>
+</nav>
+<div id="main">
+  <div class="topbar">
+    <h4>{% block page_title %}{% endblock %}</h4>
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-muted" style="font-size:.8rem;"><i class="bi bi-clock me-1"></i><span id="clk"></span></span>
+    </div>
+  </div>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} mx-4 mt-3 py-2">{{ msg }}</div>
+  {% endfor %}{% endwith %}
+
+  {# ── Bannière trial ── #}
+  {% if trial_plan == 'trial' %}
+    {% if not trial_actif %}
+    <div style="background:#DC2626;color:#fff;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;">
+      <span><i class="bi bi-lock-fill me-2"></i><strong>Essai expiré.</strong> Les agents sont désactivés.</span>
+      <a href="#" style="color:#fff;font-weight:700;border:1px solid rgba(255,255,255,.5);padding:4px 14px;border-radius:8px;text-decoration:none;">
+        Passer au plan Pro
+      </a>
+    </div>
+    {% elif trial_jours <= 7 %}
+    <div style="background:#F59E0B;color:#fff;padding:9px 28px;display:flex;align-items:center;justify-content:space-between;">
+      <span><i class="bi bi-clock-fill me-2"></i>Essai gratuit : <strong>{{ trial_jours }} jour{{ 's' if trial_jours > 1 }} restant{{ 's' if trial_jours > 1 }}</strong></span>
+      <a href="#" style="color:#fff;font-weight:700;border:1px solid rgba(255,255,255,.5);padding:4px 14px;border-radius:8px;text-decoration:none;">
+        Passer au Pro — $39/mois
+      </a>
+    </div>
+    {% else %}
+    <div style="background:#10B981;color:#fff;padding:7px 28px;font-size:.82rem;">
+      <i class="bi bi-gift-fill me-2"></i>Essai gratuit actif — <strong>{{ trial_jours }} jours restants</strong>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  <div class="page">{% block content %}{% endblock %}</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  setInterval(()=>{document.getElementById('clk').textContent=new Date().toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit',second:'2-digit'})},1000);
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Candidatures{% endblock %}
+{% block page_title %}Mes candidatures{% endblock %}
+{% block content %}
+<div class="card-stat mb-3">
+  <form method="GET" class="row g-2 align-items-end">
+    <div class="col-md-6">
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+             placeholder="Rechercher entreprise, poste..."/>
+    </div>
+    <div class="col-md-3">
+      <input type="text" name="statut" value="{{ statut_f }}" class="form-control form-control-sm"
+             placeholder="Filtrer par statut..."/>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-sm w-100 fw-bold" style="background:#4F46E5;color:#fff;border-radius:8px;">
+        <i class="bi bi-search me-1"></i>Filtrer
+      </button>
+    </div>
+    <div class="col-md-1">
+      <a href="{{ url_for('candidatures') }}" class="btn btn-sm btn-outline-secondary w-100" style="border-radius:8px;">✕</a>
+    </div>
+  </form>
+</div>
+
+<div class="card-stat">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <span class="fw-bold">{{ total }} résultat(s) — page {{ page }}/{{ pages }}</span>
+    <small class="text-muted">Cliquez sur une cellule pour modifier</small>
+  </div>
+  <div class="table-responsive">
+    <table class="table tbl table-hover mb-0">
+      <thead>
+        <tr><th>Date</th><th>Entreprise</th><th>Poste</th><th>Plateforme</th><th>Score</th><th>Statut</th><th>Lien</th></tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="color:#94A3B8;white-space:nowrap;font-size:.75rem;">{{ r.get('date','')[:16] }}</td>
+        <td contenteditable="true" class="ed" data-id="{{ r.get('id') }}" data-field="entreprise"
+            style="font-weight:700;min-width:130px;">{{ r.get('entreprise','') }}</td>
+        <td contenteditable="true" class="ed" data-id="{{ r.get('id') }}" data-field="poste"
+            style="color:#475569;min-width:150px;">{{ r.get('poste','') }}</td>
+        <td style="color:#64748B;font-size:.75rem;">{{ r.get('plateforme','') }}</td>
+        <td>
+          {% set sc = r.get('score','0')|string %}
+          <span class="{% if '9' in sc or '8' in sc %}badge-ok{% elif '7' in sc %}badge-warn{% else %}badge-inf{% endif %}">{{ sc }}</span>
+        </td>
+        <td contenteditable="true" class="ed" data-id="{{ r.get('id') }}" data-field="statut" style="min-width:140px;">
+          {% set st = r.get('statut','').lower() %}
+          {% if 'email' in st or 'easy' in st or 'postule' in st or 'rh' in st %}<span class="badge-ok">{{ r.get('statut','') }}</span>
+          {% elif 'erreur' in st or 'ignore' in st %}<span class="badge-ko">{{ r.get('statut','') }}</span>
+          {% elif 'relance' in st %}<span class="badge-inf">{{ r.get('statut','') }}</span>
+          {% else %}<span class="badge-warn">{{ r.get('statut','') }}</span>{% endif %}
+        </td>
+        <td>{% if r.get('lien','').startswith('http') %}
+          <a href="{{ r.get('lien') }}" target="_blank" class="btn btn-sm btn-outline-primary" style="font-size:.72rem;border-radius:6px;padding:2px 8px;">
+            <i class="bi bi-box-arrow-up-right"></i></a>
+        {% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}
+      <tr><td colspan="7" class="text-center py-4 text-muted">
+        Aucune candidature.<br>
+        <a href="{{ url_for('agents') }}" class="btn btn-sm btn-outline-primary mt-2">Lancer un agent</a>
+      </td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% if pages > 1 %}
+  <div class="d-flex justify-content-center mt-3 gap-1 flex-wrap">
+    {% for p in range(1, pages+1) %}
+    <a href="?page={{ p }}&q={{ q }}&statut={{ statut_f }}"
+       class="btn btn-sm {% if p==page %}btn-primary{% else %}btn-outline-secondary{% endif %}" style="border-radius:6px;min-width:34px;">{{ p }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="toast" class="toast text-bg-success border-0" role="alert">
+    <div class="d-flex"><div class="toast-body"><i class="bi bi-check-circle me-2"></i>Sauvegardé</div>
+    <button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const toast = new bootstrap.Toast(document.getElementById('toast'),{delay:1500});
+document.querySelectorAll('.ed').forEach(c=>{
+  c.addEventListener('blur',function(){
+    fetch('/candidatures/update',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:this.dataset.id,field:this.dataset.field,value:this.innerText.trim()})
+    }).then(()=>toast.show());
+  });
+  c.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();c.blur();}});
+});
+</script>
+{% endblock %}

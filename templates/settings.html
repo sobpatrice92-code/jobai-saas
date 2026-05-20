@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Paramètres{% endblock %}
+{% block page_title %}Paramètres{% endblock %}
+{% block content %}
+<div style="max-width:680px;">
+  <form method="POST" enctype="multipart/form-data">
+    <div class="card-stat mb-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-person me-2 text-primary"></i>Informations personnelles</h6>
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label small fw-bold">Nom complet</label>
+          <input type="text" name="nom_complet" class="form-control" value="{{ cfg.get('nom_complet','') }}"/></div>
+        <div class="col-md-6"><label class="form-label small fw-bold">Téléphone</label>
+          <input type="text" name="telephone" class="form-control" value="{{ cfg.get('telephone','') }}"/></div>
+        <div class="col-md-8"><label class="form-label small fw-bold">Adresse</label>
+          <input type="text" name="adresse" class="form-control" value="{{ cfg.get('adresse','') }}"/></div>
+        <div class="col-md-4"><label class="form-label small fw-bold">Ville</label>
+          <input type="text" name="ville" class="form-control" value="{{ cfg.get('ville','') }}"/></div>
+        <div class="col-md-6"><label class="form-label small fw-bold">Province</label>
+          <select name="province" class="form-select">
+            {% for p in ["Ontario","Québec","British Columbia","Alberta","Manitoba","Saskatchewan","Nova Scotia","New Brunswick","Autre"] %}
+            <option {% if cfg.get('province') == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+          </select></div>
+        <div class="col-md-6"><label class="form-label small fw-bold">Profession</label>
+          <input type="text" name="profession" class="form-control" value="{{ cfg.get('profession','') }}"/></div>
+        <div class="col-12"><label class="form-label small fw-bold">Mots-clés emploi</label>
+          <input type="text" name="keywords" class="form-control" value="{{ cfg.get('keywords','') }}"
+                 placeholder="project manager, chargé de projet..."/></div>
+      </div>
+    </div>
+
+    <div class="card-stat mb-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>CV</h6>
+      {% if cfg.get('cv_path') %}<div class="alert alert-success py-2 mb-2" style="font-size:.83rem;"><i class="bi bi-check-circle me-1"></i>CV uploadé</div>{% endif %}
+      <input type="file" name="cv" class="form-control" accept=".pdf"/>
+      <small class="text-muted">PDF uniquement · 5 MB max</small>
+    </div>
+
+    <div class="card-stat mb-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-envelope me-2 text-info"></i>Gmail d'envoi</h6>
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label small fw-bold">Adresse Gmail</label>
+          <input type="email" name="gmail_address" class="form-control" value="{{ cfg.get('gmail_address','') }}"/></div>
+        <div class="col-md-6"><label class="form-label small fw-bold">Mot de passe d'application</label>
+          <input type="password" name="gmail_password" class="form-control" value="{{ cfg.get('gmail_password','') }}" placeholder="xxxx xxxx xxxx xxxx"/></div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn fw-bold px-4" style="background:#4F46E5;color:#fff;border-radius:10px;padding:12px 32px;">
+      <i class="bi bi-check-lg me-2"></i>Sauvegarder
+    </button>
+  </form>
+</div>
+{% endblock %}

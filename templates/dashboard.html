@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Tableau de bord{% endblock %}
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card-stat d-flex justify-content-between align-items-start">
+      <div><div class="stat-label">Total</div><div class="stat-value">{{ stats.total }}</div><div style="font-size:.75rem;color:#64748B;">candidatures</div></div>
+      <div class="stat-icon" style="background:#EEF2FF;color:#4F46E5;"><i class="bi bi-send"></i></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card-stat d-flex justify-content-between align-items-start">
+      <div><div class="stat-label">Aujourd'hui</div><div class="stat-value" style="color:#4F46E5;">{{ stats.aujourd_hui }}</div><div style="font-size:.75rem;color:#64748B;">ce jour</div></div>
+      <div class="stat-icon" style="background:#F0FDF4;color:#10B981;"><i class="bi bi-calendar-check"></i></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card-stat d-flex justify-content-between align-items-start">
+      <div><div class="stat-label">Score moyen</div><div class="stat-value">{{ stats.score_moyen }}<span style="font-size:1rem;color:#94A3B8;">/100</span></div><div style="font-size:.75rem;color:#64748B;">pertinence</div></div>
+      <div class="stat-icon" style="background:#FFF7ED;color:#F59E0B;"><i class="bi bi-star"></i></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card-stat d-flex justify-content-between align-items-start">
+      <div><div class="stat-label">Succès</div><div class="stat-value" style="color:#10B981;">{{ stats.taux }}%</div><div style="font-size:.75rem;color:#64748B;">taux</div></div>
+      <div class="stat-icon" style="background:#F0FDF4;color:#10B981;"><i class="bi bi-graph-up"></i></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-5">
+    <div class="card-stat h-100">
+      <h6 class="fw-bold mb-3">Plateformes</h6>
+      {% set tot = stats.plateformes.values()|sum %}
+      {% for pf, n in stats.plateformes.items()|sort(attribute=1,reverse=true) %}
+      <div class="mb-2">
+        <div class="d-flex justify-content-between mb-1">
+          <span style="font-size:.78rem;color:#475569;">{{ pf or 'Autre' }}</span>
+          <span style="font-size:.78rem;font-weight:700;">{{ n }}</span>
+        </div>
+        <div style="background:#E2E8F0;border-radius:99px;height:5px;">
+          <div style="background:#4F46E5;border-radius:99px;height:5px;width:{{ ((n/tot*100)|round|int) if tot else 0 }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not stats.plateformes %}<p class="text-muted small">Aucune candidature encore</p>{% endif %}
+      <div class="mt-3">
+        <a href="{{ url_for('agents') }}" class="btn btn-sm w-100 fw-bold" style="background:#4F46E5;color:#fff;border-radius:8px;">
+          <i class="bi bi-play-fill me-1"></i>Lancer un agent
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card-stat h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold mb-0">Dernières candidatures</h6>
+        <a href="{{ url_for('candidatures') }}" class="btn btn-sm btn-outline-secondary" style="border-radius:8px;">Voir tout</a>
+      </div>
+      {% if stats.dernieres %}
+      <div class="table-responsive">
+        <table class="table tbl mb-0">
+          <thead><tr><th>Date</th><th>Entreprise</th><th>Statut</th></tr></thead>
+          <tbody>
+          {% for r in stats.dernieres %}
+          <tr>
+            <td style="color:#94A3B8;white-space:nowrap;">{{ r.get('date','')[:10] }}</td>
+            <td class="fw-bold">{{ r.get('entreprise','')[:28] }}<br><small class="text-muted fw-normal">{{ r.get('poste','')[:32] }}</small></td>
+            <td>
+              {% set st = r.get('statut','').lower() %}
+              {% if 'email' in st or 'easy' in st or 'postule' in st or 'rh' in st %}
+                <span class="badge-ok">{{ r.get('statut','') }}</span>
+              {% elif 'erreur' in st or 'ignore' in st %}
+                <span class="badge-ko">{{ r.get('statut','') }}</span>
+              {% elif 'relance' in st %}<span class="badge-inf">{{ r.get('statut','') }}</span>
+              {% else %}<span class="badge-warn">{{ r.get('statut','') }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-4 text-muted">
+        <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+        Aucune candidature encore.<br>
+        <a href="{{ url_for('agents') }}" class="btn btn-sm btn-outline-primary mt-2">Lancer un agent</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

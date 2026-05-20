@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Agents{% endblock %}
+{% block page_title %}Agents IA{% endblock %}
+{% block content %}
+<div class="row g-3 mb-4">
+{% for aid, a in agents.items() %}
+<div class="col-md-6 col-lg-4">
+  <div class="agent-card">
+    <div class="d-flex justify-content-between mb-2">
+      <div>
+        <div class="fw-bold" style="font-size:.92rem;">{{ a.nom }}</div>
+        <div style="font-size:.72rem;color:#94A3B8;">{{ a.desc }}</div>
+      </div>
+      <div class="d-flex align-items-center gap-1">
+        <span class="dot {% if aid in running %}on{% else %}off{% endif %}" id="dot-{{ aid }}"></span>
+        <span id="lbl-{{ aid }}" style="font-size:.7rem;font-weight:700;color:{% if aid in running %}#10B981{% else %}#94A3B8{% endif %};">
+          {% if aid in running %}EN COURS{% else %}ARRÊTÉ{% endif %}
+        </span>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm flex-fill fw-bold" id="run-{{ aid }}"
+        style="background:#4F46E5;color:#fff;border-radius:8px;"
+        onclick="runAgent('{{ aid }}')" {% if aid in running %}disabled{% endif %}>
+        <i class="bi bi-play-fill me-1"></i>Lancer
+      </button>
+      <button class="btn btn-sm btn-outline-danger" id="stop-{{ aid }}"
+        style="border-radius:8px;" onclick="stopAgent('{{ aid }}')"
+        {% if aid not in running %}disabled{% endif %}>
+        <i class="bi bi-stop-fill"></i>
+      </button>
+      <button class="btn btn-sm btn-outline-secondary" style="border-radius:8px;"
+        data-bs-toggle="modal" data-bs-target="#m-{{ aid }}">
+        <i class="bi bi-terminal"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="m-{{ aid }}" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="border-radius:14px;border:none;">
+      <div class="modal-header border-bottom">
+        <h6 class="modal-title fw-bold"><i class="bi bi-terminal me-2"></i>{{ a.nom }} — Logs</h6>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <div id="log-{{ aid }}" style="background:#0F172A;color:#94A3B8;font-family:Consolas,monospace;
+          font-size:.78rem;border-radius:10px;padding:14px;height:320px;overflow-y:auto;line-height:1.7;">
+          <span style="color:#475569;">En attente...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<div class="card-stat">
+  <h6 class="fw-bold mb-2"><i class="bi bi-info-circle text-primary me-2"></i>Comment ça marche</h6>
+  <ul class="mb-0" style="font-size:.84rem;color:#475569;padding-left:1.2rem;">
+    <li>Les agents utilisent <strong>votre API Key OpenAI et votre Gmail</strong> configurés dans Paramètres.</li>
+    <li>Chaque agent tourne indépendamment — vous pouvez en lancer plusieurs.</li>
+    <li>Les résultats apparaissent automatiquement dans <strong>Candidatures</strong>.</li>
+    <li><strong>LinkedIn Post</strong> génère un post professionnel et vous demande approbation avant publication.</li>
+  </ul>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function runAgent(id) {
+  fetch(`/agents/run/${id}`,{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.error){alert(d.error);return;}
+    setSt(id,true); startStream(id);
+  });
+}
+function stopAgent(id) {
+  fetch(`/agents/stop/${id}`,{method:'POST'}).then(()=>setSt(id,false));
+}
+function setSt(id,on) {
+  document.getElementById(`dot-${id}`).className = 'dot '+(on?'on':'off');
+  const l = document.getElementById(`lbl-${id}`);
+  l.textContent = on?'EN COURS':'ARRÊTÉ'; l.style.color = on?'#10B981':'#94A3B8';
+  document.getElementById(`run-${id}`).disabled = on;
+  document.getElementById(`stop-${id}`).disabled = !on;
+}
+function startStream(id) {
+  const el = document.getElementById(`log-${id}`);
+  el.innerHTML = '';
+  const es = new EventSource(`/agents/stream/${id}`);
+  es.onmessage = e => {
+    const d = document.createElement('div');
+    d.textContent = e.data;
+    d.style.color = e.data.includes('✅')||e.data.includes('Envoyé')?'#34D399':
+                    e.data.includes('❌')||e.data.includes('Erreur')?'#F87171':
+                    e.data.includes('🚀')||e.data.includes('INFO')?'#60A5FA':'#94A3B8';
+    el.appendChild(d); el.scrollTop = el.scrollHeight;
+    if(e.data==='[TERMINÉ]'){es.close();setSt(id,false);}
+  };
+}
+document.querySelectorAll('[id^="m-"]').forEach(m=>{
+  m.addEventListener('shown.bs.modal',()=>startStream(m.id.replace('m-','')));
+});
+setInterval(()=>{
+  fetch('/agents/status').then(r=>r.json()).then(d=>{
+    Object.entries(d).forEach(([id,on])=>setSt(id,on));
+  });
+},5000);
+</script>
+{% endblock %}

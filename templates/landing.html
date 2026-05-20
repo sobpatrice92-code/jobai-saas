@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>JobAI — Candidatures automatisées par IA</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; }
+    .hero {
+      background: linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%);
+      min-height: 100vh; display: flex; align-items: center;
+      color: #fff; padding: 60px 0;
+    }
+    .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 900; line-height: 1.1; }
+    .hero .sub { font-size: 1.15rem; color: #94A3B8; margin: 20px 0 36px; max-width: 520px; }
+    .btn-hero {
+      background: #4F46E5; color: #fff; border: none;
+      padding: 14px 32px; border-radius: 12px; font-size: 1rem; font-weight: 700;
+      text-decoration: none; display: inline-block; transition: background .2s;
+    }
+    .btn-hero:hover { background: #4338CA; color: #fff; }
+    .btn-login-hero {
+      border: 2px solid rgba(255,255,255,.3); color: #fff;
+      padding: 14px 32px; border-radius: 12px; font-size: 1rem; font-weight: 600;
+      text-decoration: none; display: inline-block; margin-left: 12px; transition: all .2s;
+    }
+    .btn-login-hero:hover { border-color: #fff; color: #fff; background: rgba(255,255,255,.1); }
+    .features { padding: 80px 0; background: #F8FAFC; }
+    .feature-card {
+      background: #fff; border-radius: 16px; padding: 28px; border: 1px solid #E2E8F0;
+      height: 100%; transition: box-shadow .2s;
+    }
+    .feature-card:hover { box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+    .feature-icon {
+      width: 52px; height: 52px; border-radius: 12px; font-size: 1.5rem;
+      display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
+    }
+    .professions { padding: 60px 0; }
+    .prof-badge {
+      display: inline-block; background: #EEF2FF; color: #4F46E5;
+      border-radius: 99px; padding: 8px 20px; margin: 6px; font-weight: 600; font-size: .9rem;
+    }
+    .steps { background: #0F172A; color: #fff; padding: 80px 0; }
+    .step-num {
+      width: 48px; height: 48px; border-radius: 50%; background: #4F46E5;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 1.2rem; margin: 0 auto 16px; flex-shrink: 0;
+    }
+    .cta { background: #4F46E5; color: #fff; padding: 80px 0; text-align: center; }
+    footer { background: #0F172A; color: #64748B; padding: 28px 0; text-align: center; font-size: .85rem; }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav style="position:absolute; top:0; left:0; right:0; z-index:10; padding:20px 40px;"
+     class="d-flex justify-content-between align-items-center">
+  <span style="color:#fff; font-weight:800; font-size:1.2rem;">🤖 JobAI</span>
+  <div>
+    <a href="{{ url_for('login') }}" class="btn-login-hero">Se connecter</a>
+    <a href="{{ url_for('register') }}" class="btn-hero" style="margin-left:8px;">Commencer gratuitement</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col-lg-7">
+        <div style="color:#818CF8; font-weight:700; font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; margin-bottom:12px;">
+          Propulsé par GPT-4o
+        </div>
+        <h1>Votre assistant IA pour trouver un emploi <span style="color:#818CF8;">plus vite</span></h1>
+        <p class="sub">
+          JobAI postule automatiquement à des centaines d'offres en votre nom, génère des lettres de motivation personnalisées et suit vos candidatures — pour chaque métier, dans chaque ville.
+        </p>
+        <a href="{{ url_for('register') }}" class="btn-hero">
+          <i class="bi bi-rocket me-2"></i>Créer mon compte gratuit
+        </a>
+        <a href="{{ url_for('login') }}" class="btn-login-hero">Se connecter</a>
+      </div>
+      <div class="col-lg-5 d-none d-lg-block text-center" style="margin-top:80px;">
+        <div style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1);
+          border-radius:20px; padding:28px; font-family:monospace; font-size:.82rem; color:#94A3B8; text-align:left;">
+          <div style="color:#34D399;">✅ [09:00] Job Hunter démarré</div>
+          <div>📋 47 offres trouvées — LinkedIn, Indeed</div>
+          <div style="color:#60A5FA;">🤖 Scoring IA en cours...</div>
+          <div>⭐ 12 offres score > 75/100</div>
+          <div style="color:#34D399;">✅ Lettre générée — AECOM</div>
+          <div style="color:#34D399;">✅ Email envoyé → careers@aecom.ca</div>
+          <div style="color:#34D399;">✅ Easy Apply → Stantec</div>
+          <div style="color:#94A3B8;">⏳ [09:47] 8/12 candidatures envoyées...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold" style="font-size:2rem;">Tout ce dont vous avez besoin</h2>
+      <p class="text-muted">Une plateforme complète, vos propres clés API — vous gardez le contrôle total.</p>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#EEF2FF; color:#4F46E5;"><i class="bi bi-search"></i></div>
+          <h5 class="fw-bold">Scraping multi-plateformes</h5>
+          <p class="text-muted mb-0">LinkedIn, Indeed, Job Bank Canada — des centaines d'offres analysées chaque jour selon vos mots-clés.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#F0FDF4; color:#10B981;"><i class="bi bi-envelope-check"></i></div>
+          <h5 class="fw-bold">Lettres personnalisées par IA</h5>
+          <p class="text-muted mb-0">GPT-4o génère une lettre unique pour chaque poste, basée sur votre CV et l'offre d'emploi.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#FFF7ED; color:#F59E0B;"><i class="bi bi-graph-up-arrow"></i></div>
+          <h5 class="fw-bold">Tableau de bord complet</h5>
+          <p class="text-muted mb-0">Suivez chaque candidature en temps réel — score, statut, plateforme, relances automatiques.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#FDF4FF; color:#A855F7;"><i class="bi bi-file-earmark-person"></i></div>
+          <h5 class="fw-bold">Optimiseur ATS</h5>
+          <p class="text-muted mb-0">Votre CV réécrit automatiquement pour passer les filtres ATS de chaque entreprise.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#FEF2F2; color:#EF4444;"><i class="bi bi-arrow-repeat"></i></div>
+          <h5 class="fw-bold">Relances automatiques</h5>
+          <p class="text-muted mb-0">Le bot relance les recruteurs sans réponse après 7 jours — directement à leur email RH.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#EFF6FF; color:#3B82F6;"><i class="bi bi-linkedin"></i></div>
+          <h5 class="fw-bold">Posts LinkedIn automatiques</h5>
+          <p class="text-muted mb-0">3 posts par semaine, aérés et professionnels, avec photos adaptées — votre visibilité augmente.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Professions -->
+<section class="professions">
+  <div class="container text-center">
+    <h2 class="fw-bold mb-3">Pour tous les métiers</h2>
+    <p class="text-muted mb-4">Médecin, mécanicien, ingénieur, comptable, technicien — JobAI s'adapte à votre domaine et votre ville.</p>
+    <div>
+      {% for p in ["Génie civil","Médecine","Mécanique","Comptabilité","Informatique","Droit",
+                   "Architecture","Infirmier(ère)","Enseignement","Électricité","Plomberie",
+                   "Finance","Marketing","RH","Pharmacie","Construction"] %}
+      <span class="prof-badge">{{ p }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Steps -->
+<section class="steps">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold text-white" style="font-size:2rem;">Prêt en 3 minutes</h2>
+    </div>
+    <div class="row g-4 text-center">
+      <div class="col-md-4">
+        <div class="step-num">1</div>
+        <h5 class="text-white fw-bold">Créez votre compte</h5>
+        <p style="color:#94A3B8;">Email + mot de passe. Gratuit, sans carte bancaire.</p>
+      </div>
+      <div class="col-md-4">
+        <div class="step-num">2</div>
+        <h5 class="text-white fw-bold">Configurez votre profil</h5>
+        <p style="color:#94A3B8;">Uploadez votre CV, entrez vos mots-clés et vos clés API OpenAI et Gmail.</p>
+      </div>
+      <div class="col-md-4">
+        <div class="step-num">3</div>
+        <h5 class="text-white fw-bold">Lancez les agents</h5>
+        <p style="color:#94A3B8;">D'un clic, vos agents partent chercher et postuler. Vous suivez tout en direct.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="container">
+    <h2 class="fw-bold mb-3" style="font-size:2rem;">Commencez aujourd'hui — c'est gratuit</h2>
+    <p style="color:rgba(255,255,255,.8); margin-bottom:32px;">Vous apportez votre API Key OpenAI, on fait le reste.</p>
+    <a href="{{ url_for('register') }}" style="background:#fff; color:#4F46E5; font-weight:800;
+       padding:16px 40px; border-radius:12px; text-decoration:none; font-size:1.05rem;">
+      Créer mon compte gratuitement
+    </a>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    🤖 JobAI — Plateforme de candidature automatisée par IA · Ottawa, Canada · 2026
+  </div>
+</footer>
+
+</body>
+</html>
