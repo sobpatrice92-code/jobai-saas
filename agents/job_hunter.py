@@ -16,19 +16,17 @@ from bs4 import BeautifulSoup
 # CONFIG
 # ============================================================
 
-KEYWORDS = [
+_kw_env = os.getenv("USER_KEYWORDS", "")
+KEYWORDS = [k.strip() for k in _kw_env.split(",") if k.strip()] or [
     "chargé de projets construction",
     "gestionnaire de projets génie civil",
     "coordinateur de chantier",
-    "technicien génie civil",
-    "estimateur construction",
-    "surveillant de travaux",
-    "assistant chargé de projet infrastructures",
 ]
 
-LOCATION   = "Ottawa, ON"
-OUTPUT_DIR = "offres_trouvees"
-CSV_FILE   = f"{OUTPUT_DIR}/offres_{datetime.now().strftime('%Y%m%d')}.csv"
+LOCATION   = os.getenv("USER_ADDRESS", "Ottawa, ON")
+_profile   = os.getenv("PROFILE_PATH", ".")
+OUTPUT_DIR = os.path.join(_profile, "offres_trouvees")
+CSV_FILE   = os.path.join(OUTPUT_DIR, f"offres_{datetime.now().strftime('%Y%m%d')}.csv")
 
 HEADERS = {
     "User-Agent": (

@@ -193,18 +193,18 @@ def run_agent(agent_id):
         "PROFILE_PATH":      cfg.get("linkedin_profile_path", user_profile_dir),
     })
 
-    proc = subprocess.Popen(
-        [PYTHON, str(AGENTS_DIR / AGENTS[agent_id]["script"])],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        cwd=str(AGENTS_DIR), encoding="utf-8", errors="replace",
-        bufsize=1, env=env
-    )
-    running_procs[key] = proc
+    try:
+        proc = subprocess.Popen(
+            [PYTHON, str(AGENTS_DIR / AGENTS[agent_id]["script"])],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cwd=str(AGENTS_DIR), encoding="utf-8", errors="replace",
+            bufsize=1, env=env
+        )
+    except Exception as e:
+        app.logger.error(f"Popen failed for {agent_id}: {e}")
+        return jsonify({"error": f"Impossible de lancer l'agent : {e}"}), 500
 
-    def cleanup():
-        proc.wait()
-        running_procs.pop(key, None)
-    threading.Thread(target=cleanup, daemon=True).start()
+    running_procs[key] = proc
     return jsonify({"status": "started"})
 
 @app.route("/agents/stop/<agent_id>", methods=["POST"])
@@ -223,13 +223,19 @@ def stream_agent(agent_id):
     proc = running_procs.get(key)
     if not proc:
         def empty():
-            yield "data: [Agent non actif]\n\n"
+            yield "data: [ERREUR] Agent non trouvé — vérifiez la configuration (setup)\n\n"
+            yield "data: [TERMINÉ]\n\n"
         return Response(stream_with_context(empty()), mimetype="text/event-stream")
     def generate():
-        for line in proc.stdout:
-            line = line.rstrip()
-            if line:
-                yield f"data: {line}\n\n"
+        try:
+            for line in proc.stdout:
+                line = line.rstrip()
+                if line:
+                    yield f"data: {line}\n\n"
+        except Exception as e:
+            yield f"data: [ERREUR] {e}\n\n"
+        finally:
+            running_procs.pop(key, None)
         yield "data: [TERMINÉ]\n\n"
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
