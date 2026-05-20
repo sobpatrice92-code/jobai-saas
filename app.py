@@ -14,6 +14,8 @@ import models
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "jobai-saas-secret-2026-x9z")
 
+models.init_db()
+
 @app.context_processor
 def inject_trial():
     """Injecte les infos trial dans tous les templates."""
