@@ -46,8 +46,8 @@ UPLOAD_FOLDER = Path(__file__).parent / "uploads"
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 USER_DATA     = Path(__file__).parent / "user_data"
 USER_DATA.mkdir(exist_ok=True)
-AGENTS_DIR    = Path("C:/ai_linkedin_bot/agents")
-PYTHON        = r"C:\Program Files\Python314\python.exe"
+AGENTS_DIR    = Path(__file__).parent / "agents"
+PYTHON        = sys.executable
 MAX_CV_SIZE   = 5 * 1024 * 1024  # 5 MB
 
 AGENTS = {
