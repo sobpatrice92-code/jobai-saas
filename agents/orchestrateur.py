@@ -18,11 +18,15 @@ CV_PATH          = os.getenv("CV_PATH", "cv.pdf")
 GMAIL_ADDRESS    = os.getenv("GMAIL_ADDRESS")
 GMAIL_PASSWORD   = os.getenv("GMAIL_APP_PASSWORD")
 EMAIL_DESTINAIRE = os.getenv("GMAIL_ADDRESS")
-PROFILE_PATH     = os.getenv("PROFILE_PATH", os.getenv("PROFILE_PATH", "chrome_profile"))
-OUTPUT_DIR       = "candidatures_envoyees"
+PROFILE_PATH     = os.getenv("PROFILE_PATH", "chrome_profile")
+LINKEDIN_EMAIL   = os.getenv("LINKEDIN_EMAIL", "")
+LINKEDIN_PASSWORD= os.getenv("LINKEDIN_PASSWORD", "")
+OUTPUT_DIR       = os.path.join(PROFILE_PATH, "candidatures_envoyees")
 SEUIL_SCORE      = 65
+HEADLESS         = os.getenv("DISPLAY", "") == ""  # headless si pas d'ecran (Railway)
 
-KEYWORDS = [
+_kw_env = os.getenv("USER_KEYWORDS", "")
+KEYWORDS = [k.strip() for k in _kw_env.split(",") if k.strip()] or [
     "charge de projets construction",
     "gestionnaire projets genie civil",
     "coordinateur de chantier",
@@ -30,6 +34,8 @@ KEYWORDS = [
     "estimateur construction",
     "surveillant de travaux",
 ]
+
+LOCATION = os.getenv("USER_ADDRESS", "Ottawa, ON")
 
 CSV_COLONNES = ["date", "plateforme", "entreprise", "poste", "lien", "score", "statut"]
 
@@ -108,16 +114,18 @@ SITES_CARRIERES = {
     "bombardier":   "https://jobs.bombardier.com",
 }
 
+_nom_complet = os.getenv("USER_NAME", "Patrice Arnold Sob Feukam")
+_parts = _nom_complet.split(" ", 2)
 CANDIDAT = {
-    "prenom":      "Patrice Arnold",
-    "nom":         "Sob Feukam",
-    "nom_complet": "Patrice Arnold Sob Feukam",
-    "email":       "sobpatrice@yahoo.fr",
-    "telephone":   "514-236-4628",
-    "ville":       "Ottawa",
+    "prenom":      _parts[0] if len(_parts) > 0 else "Patrice",
+    "nom":         _parts[-1] if len(_parts) > 1 else "Sob Feukam",
+    "nom_complet": _nom_complet,
+    "email":       os.getenv("USER_EMAIL", os.getenv("GMAIL_ADDRESS", "")),
+    "telephone":   os.getenv("USER_PHONE", "514-236-4628"),
+    "ville":       os.getenv("USER_ADDRESS", "Ottawa").split(",")[0].strip(),
     "province":    "Ontario",
     "pays":        "Canada",
-    "linkedin":    "https://www.linkedin.com/in/patrice-arnold-sob-feukam",
+    "linkedin":    "",
 }
 
 JS_EXTRACT = (
@@ -507,23 +515,38 @@ async def run():
     retenues   = []
 
     async with async_playwright() as p:
+        Path(PROFILE_PATH).mkdir(parents=True, exist_ok=True)
         browser = await p.chromium.launch_persistent_context(
-            user_data_dir=PROFILE_PATH, channel="chrome",
-            headless=False, viewport={"width": 1400, "height": 900}
+            user_data_dir=PROFILE_PATH,
+            headless=HEADLESS,
+            args=["--no-sandbox", "--disable-dev-shm-usage"] if HEADLESS else [],
+            viewport={"width": 1400, "height": 900}
         )
         page = browser.pages[0] if browser.pages else await browser.new_page()
         try:
             await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(4)
-            if "login" in page.url or "authwall" in page.url:
-                log("Session expiree")
-                return
-            log("Session LinkedIn active")
+            if "login" in page.url or "authwall" in page.url or "checkpoint" in page.url:
+                if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
+                    log("Session expiree — configurez LinkedIn Email/Password dans le Setup")
+                    return
+                log("Connexion LinkedIn...")
+                await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
+                await page.fill("#username", LINKEDIN_EMAIL)
+                await page.fill("#password", LINKEDIN_PASSWORD)
+                await page.click("button[type='submit']")
+                await asyncio.sleep(5)
+                if "login" in page.url or "checkpoint" in page.url:
+                    log("Echec connexion LinkedIn — verifiez vos identifiants")
+                    return
+                log("Connexion LinkedIn reussie")
+            else:
+                log("Session LinkedIn active")
 
             log("PHASE 1 - Job Hunter")
             for i, kw in enumerate(KEYWORDS, 1):
                 log("  [" + str(i) + "/" + str(len(KEYWORDS)) + "] " + kw)
-                url = "https://www.linkedin.com/jobs/search/?keywords=" + kw.replace(" ", "%20") + "&location=Ottawa-Gatineau&f_TPR=r604800"
+                url = "https://www.linkedin.com/jobs/search/?keywords=" + kw.replace(" ", "%20") + "&location=" + LOCATION.replace(" ", "%20") + "&f_TPR=r604800"
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     await asyncio.sleep(random.randint(2000, 3500) / 1000)
