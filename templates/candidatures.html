@@ -43,8 +43,12 @@
             style="color:#475569;min-width:150px;">{{ r.get('poste','') }}</td>
         <td style="color:#64748B;font-size:.75rem;">{{ r.get('plateforme','') }}</td>
         <td>
-          {% set sc = r.get('score','0')|string %}
-          <span class="{% if '9' in sc or '8' in sc %}badge-ok{% elif '7' in sc %}badge-warn{% else %}badge-inf{% endif %}">{{ sc }}</span>
+          {% set sc = r.get('score','0')|string|trim %}
+          {% set sc_int = sc|int if sc.isdigit() else 0 %}
+          {% if sc_int >= 80 %}<span class="badge-ok fw-bold">{{ sc }}/100</span>
+          {% elif sc_int >= 65 %}<span class="badge-warn fw-bold">{{ sc }}/100</span>
+          {% elif sc_int > 0 %}<span class="badge-inf">{{ sc }}/100</span>
+          {% else %}<span style="color:#94A3B8;">—</span>{% endif %}
         </td>
         <td contenteditable="true" class="ed" data-id="{{ r.get('id') }}" data-field="statut" style="min-width:140px;">
           {% set st = r.get('statut','').lower() %}

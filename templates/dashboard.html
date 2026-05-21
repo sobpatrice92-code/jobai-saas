@@ -62,12 +62,25 @@
       {% if stats.dernieres %}
       <div class="table-responsive">
         <table class="table tbl mb-0">
-          <thead><tr><th>Date</th><th>Entreprise</th><th>Statut</th></tr></thead>
+          <thead><tr><th>Date</th><th>Entreprise</th><th>Score</th><th>Statut</th></tr></thead>
           <tbody>
           {% for r in stats.dernieres %}
+          {% set sc = r.get('score','0')|string|trim %}
+          {% set sc_int = sc|int if sc.isdigit() else 0 %}
           <tr>
-            <td style="color:#94A3B8;white-space:nowrap;">{{ r.get('date','')[:10] }}</td>
-            <td class="fw-bold">{{ r.get('entreprise','')[:28] }}<br><small class="text-muted fw-normal">{{ r.get('poste','')[:32] }}</small></td>
+            <td style="color:#94A3B8;white-space:nowrap;font-size:.75rem;">{{ r.get('date','')[:10] }}</td>
+            <td class="fw-bold">{{ r.get('entreprise','')[:26] }}<br><small class="text-muted fw-normal">{{ r.get('poste','')[:30] }}</small></td>
+            <td>
+              {% if sc_int >= 80 %}
+                <span class="badge-ok fw-bold">{{ sc }}/100</span>
+              {% elif sc_int >= 65 %}
+                <span class="badge-warn fw-bold">{{ sc }}/100</span>
+              {% elif sc_int > 0 %}
+                <span class="badge-inf">{{ sc }}/100</span>
+              {% else %}
+                <span style="color:#94A3B8;font-size:.75rem;">—</span>
+              {% endif %}
+            </td>
             <td>
               {% set st = r.get('statut','').lower() %}
               {% if 'email' in st or 'easy' in st or 'postule' in st or 'rh' in st %}
