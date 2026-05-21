@@ -86,6 +86,25 @@
       <small class="text-muted">Format PDF uniquement · Max 5 MB</small>
     </div>
 
+    <div class="setup-card mb-3">
+      <div class="section-title"><i class="bi bi-linkedin me-1"></i>Compte LinkedIn</div>
+      <div class="tip mb-3">
+        Requis pour que les agents postulent automatiquement sur LinkedIn en votre nom.
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Email LinkedIn</label>
+          <input type="email" name="linkedin_email" class="form-control"
+                 value="{{ cfg.get('linkedin_email','') }}" placeholder="vous@email.com"/>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Mot de passe LinkedIn</label>
+          <input type="password" name="linkedin_password" class="form-control"
+                 value="{{ cfg.get('linkedin_password','') }}" placeholder="Votre mot de passe"/>
+        </div>
+      </div>
+    </div>
+
     <div class="setup-card mb-4">
       <div class="section-title"><i class="bi bi-envelope me-1"></i>Email d'envoi (Gmail)</div>
       <div class="tip mb-3">

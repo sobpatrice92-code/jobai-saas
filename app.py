@@ -117,16 +117,17 @@ def logout():
 def setup():
     if request.method == "POST":
         data = {
-            "openai_key":    request.form.get("openai_key","").strip(),
-            "gmail_address": request.form.get("gmail_address","").strip(),
-            "gmail_password":request.form.get("gmail_password","").strip(),
-            "nom_complet":   request.form.get("nom_complet","").strip(),
-            "telephone":     request.form.get("telephone","").strip(),
-            "adresse":       request.form.get("adresse","").strip(),
-            "ville":         request.form.get("ville","").strip(),
-            "province":      request.form.get("province","").strip(),
-            "profession":    request.form.get("profession","").strip(),
-            "keywords":      request.form.get("keywords","").strip(),
+            "gmail_address":    request.form.get("gmail_address","").strip(),
+            "gmail_password":   request.form.get("gmail_password","").strip(),
+            "linkedin_email":   request.form.get("linkedin_email","").strip(),
+            "linkedin_password":request.form.get("linkedin_password","").strip(),
+            "nom_complet":      request.form.get("nom_complet","").strip(),
+            "telephone":        request.form.get("telephone","").strip(),
+            "adresse":          request.form.get("adresse","").strip(),
+            "ville":            request.form.get("ville","").strip(),
+            "province":         request.form.get("province","").strip(),
+            "profession":       request.form.get("profession","").strip(),
+            "keywords":         request.form.get("keywords","").strip(),
         }
         # CV Upload
         cv = request.files.get("cv")
@@ -192,6 +193,8 @@ def run_agent(agent_id):
         "USER_PROFESSION":   cfg.get("profession",""),
         "USER_EMAIL":        cfg.get("gmail_address",""),
         "PROFILE_PATH":      cfg.get("linkedin_profile_path", str(user_profile_dir)),
+        "LINKEDIN_EMAIL":    cfg.get("linkedin_email",""),
+        "LINKEDIN_PASSWORD": cfg.get("linkedin_password",""),
         "SAAS_API_URL":      os.getenv("RAILWAY_PUBLIC_DOMAIN", "http://localhost:8080"),
         "SAAS_USER_TOKEN":   str(uid),
     })
