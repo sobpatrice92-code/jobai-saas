@@ -171,18 +171,19 @@ def logout():
 def setup():
     if request.method == "POST":
         data = {
-            "gmail_address":    request.form.get("gmail_address","").strip(),
-            "gmail_password":   request.form.get("gmail_password","").strip(),
-            "linkedin_email":   request.form.get("linkedin_email","").strip(),
-            "linkedin_password":request.form.get("linkedin_password","").strip(),
-            "notif_email":      request.form.get("notif_email","").strip(),
-            "nom_complet":      request.form.get("nom_complet","").strip(),
-            "telephone":        request.form.get("telephone","").strip(),
-            "adresse":          request.form.get("adresse","").strip(),
-            "ville":            request.form.get("ville","").strip(),
-            "province":         request.form.get("province","").strip(),
-            "profession":       request.form.get("profession","").strip(),
-            "keywords":         request.form.get("keywords","").strip(),
+            "gmail_address":       request.form.get("gmail_address","").strip(),
+            "gmail_password":      request.form.get("gmail_password","").strip(),
+            "linkedin_email":      request.form.get("linkedin_email","").strip(),
+            "linkedin_password":   request.form.get("linkedin_password","").strip(),
+            "linkedin_cookies_json": request.form.get("linkedin_cookies_json","").strip(),
+            "notif_email":         request.form.get("notif_email","").strip(),
+            "nom_complet":         request.form.get("nom_complet","").strip(),
+            "telephone":           request.form.get("telephone","").strip(),
+            "adresse":             request.form.get("adresse","").strip(),
+            "ville":               request.form.get("ville","").strip(),
+            "province":            request.form.get("province","").strip(),
+            "profession":          request.form.get("profession","").strip(),
+            "keywords":            request.form.get("keywords","").strip(),
         }
         # CV Upload — sauvegarde fichier + contenu en base (Railway = filesystem éphémère)
         cv = request.files.get("cv")
