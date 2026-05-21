@@ -596,12 +596,18 @@ async def run():
         try:
             # Injecter le cookie li_at si fourni (évite tout login headless)
             if LINKEDIN_LI_AT:
-                await browser.add_cookies([{
-                    "name": "li_at", "value": LINKEDIN_LI_AT,
-                    "domain": ".linkedin.com", "path": "/",
-                    "httpOnly": True, "secure": True, "sameSite": "None"
-                }])
-                log("Cookie li_at injecte — pas besoin de login")
+                li_at_val = LINKEDIN_LI_AT.strip()
+                log("Cookie li_at longueur : " + str(len(li_at_val)))
+                await browser.add_cookies([
+                    {"name": "li_at", "value": li_at_val,
+                     "domain": ".linkedin.com", "path": "/",
+                     "httpOnly": True, "secure": True, "sameSite": "None",
+                     "expires": 2000000000},
+                    {"name": "JSESSIONID", "value": "ajax:" + li_at_val[:16],
+                     "domain": ".linkedin.com", "path": "/",
+                     "httpOnly": False, "secure": True, "sameSite": "None"},
+                ])
+                log("Cookie li_at injecte")
             else:
                 # Charger les cookies LinkedIn sauvegardés en base
                 saved_cookies = _load_cookies()
