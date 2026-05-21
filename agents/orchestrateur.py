@@ -1,5 +1,5 @@
 import sys
-sys.stdout.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 from dotenv import load_dotenv
 load_dotenv()
 from openai import OpenAI
@@ -170,7 +170,7 @@ JS_INTERESSE = (
 )
 
 def log(msg):
-    print("[" + datetime.now().strftime("%H:%M:%S") + "] " + str(msg))
+    print("[" + datetime.now().strftime("%H:%M:%S") + "] " + str(msg), flush=True)
 
 def lire_pdf(path):
     reader = PdfReader(path)
@@ -501,13 +501,12 @@ async def postuler_externe(browser, page, offre, lettre):
             return "echec"
 
 async def run():
-    print()
-    print("="*60)
-    print("  ORCHESTRATEUR LINKEDIN v8 - TAUX DE SUCCES 100%")
-    print("  Easy Apply v8 + Formulaire + 64 emails RH directs")
-    print("="*60)
+    print("="*60, flush=True)
+    print("  ORCHESTRATEUR LINKEDIN v8 - TAUX DE SUCCES 100%", flush=True)
+    print("  Easy Apply v8 + Formulaire + 64 emails RH directs", flush=True)
+    print("="*60, flush=True)
     if not Path(CV_PATH).exists():
-        log("CV non trouve")
+        log("CV non trouve : " + CV_PATH)
         return
     cv_texte = lire_pdf(CV_PATH)
     log("CV charge (" + str(len(cv_texte)) + " car)")
@@ -516,6 +515,15 @@ async def run():
 
     async with async_playwright() as p:
         Path(PROFILE_PATH).mkdir(parents=True, exist_ok=True)
+        # Supprimer les lock files Chrome pour eviter les blocages
+        for lock in ["LOCK", "SingletonLock", "SingletonCookie", "lockfile"]:
+            lp = Path(PROFILE_PATH) / lock
+            if lp.exists():
+                try:
+                    lp.unlink()
+                    log("Lock supprime : " + lock)
+                except Exception:
+                    pass
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_PATH,
             headless=HEADLESS,

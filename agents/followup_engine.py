@@ -1,5 +1,5 @@
 import sys
-sys.stdout.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 from dotenv import load_dotenv
 load_dotenv()
 
