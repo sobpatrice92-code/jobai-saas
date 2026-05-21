@@ -68,10 +68,10 @@ if DATABASE_URL:
             FOREIGN KEY(user_id) REFERENCES users(id)
         )""")
         try:
-            cur.execute("ALTER TABLE user_config ADD COLUMN cv_content TEXT DEFAULT ''")
+            cur.execute("ALTER TABLE user_config ADD COLUMN IF NOT EXISTS cv_content TEXT DEFAULT ''")
             conn.commit()
         except Exception:
-            pass
+            conn.rollback()
         cur.execute(f"""
         CREATE TABLE IF NOT EXISTS candidatures (
             id          {PK},
