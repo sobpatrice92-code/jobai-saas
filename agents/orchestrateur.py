@@ -5,7 +5,7 @@ load_dotenv()
 from openai import OpenAI
 from pypdf import PdfReader
 from playwright.async_api import async_playwright
-import asyncio, random, os, csv, smtplib, re
+import asyncio, random, os, csv, smtplib, re, json, requests as _req
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -24,7 +24,33 @@ LINKEDIN_EMAIL   = os.getenv("LINKEDIN_EMAIL", "")
 LINKEDIN_PASSWORD= os.getenv("LINKEDIN_PASSWORD", "")
 OUTPUT_DIR       = os.path.join(PROFILE_PATH, "candidatures_envoyees")
 SEUIL_SCORE      = 65
-HEADLESS         = os.getenv("DISPLAY", "") == ""  # headless si pas d'ecran (Railway)
+HEADLESS         = os.getenv("DISPLAY", "") == ""
+SAAS_API_URL     = os.getenv("SAAS_API_URL", "")
+SAAS_TOKEN       = os.getenv("SAAS_USER_TOKEN", "")
+if SAAS_API_URL and not SAAS_API_URL.startswith("http"):
+    SAAS_API_URL = "https://" + SAAS_API_URL
+
+def _save_cookies(cookies):
+    if not SAAS_API_URL or not SAAS_TOKEN:
+        return
+    try:
+        _req.post(f"{SAAS_API_URL}/api/linkedin/cookies",
+                  json={"cookies": cookies},
+                  headers={"X-User-Token": SAAS_TOKEN}, timeout=5)
+    except Exception:
+        pass
+
+def _load_cookies():
+    if not SAAS_API_URL or not SAAS_TOKEN:
+        return []
+    try:
+        r = _req.get(f"{SAAS_API_URL}/api/linkedin/cookies",
+                     headers={"X-User-Token": SAAS_TOKEN}, timeout=5)
+        if r.status_code == 200:
+            return r.json().get("cookies", [])
+    except Exception:
+        pass
+    return []
 
 _kw_env = os.getenv("USER_KEYWORDS", "")
 KEYWORDS = [k.strip() for k in _kw_env.split(",") if k.strip()] or [
@@ -567,6 +593,15 @@ async def run():
             window.chrome = {runtime: {}};
         """)
         try:
+            # Charger les cookies LinkedIn sauvegardés en base
+            saved_cookies = _load_cookies()
+            if saved_cookies:
+                try:
+                    await browser.add_cookies(saved_cookies)
+                    log("Cookies LinkedIn charges depuis DB (" + str(len(saved_cookies)) + " cookies)")
+                except Exception as e:
+                    log("Cookies charges (avertissement) : " + str(e)[:50])
+
             await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(4)
             if "login" in page.url or "authwall" in page.url or "checkpoint" in page.url:
@@ -621,8 +656,14 @@ async def run():
                     log("Echec connexion LinkedIn — verifiez email/mot de passe dans le Setup")
                     return
                 log("Connexion LinkedIn reussie")
+                cookies = await browser.cookies()
+                _save_cookies(cookies)
+                log("Cookies sauvegardes en base (" + str(len(cookies)) + " cookies)")
             else:
                 log("Session LinkedIn active")
+                cookies = await browser.cookies()
+                _save_cookies(cookies)
+                log("Cookies mis a jour en base")
 
             log("PHASE 1 - Job Hunter")
             for i, kw in enumerate(KEYWORDS, 1):

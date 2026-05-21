@@ -67,11 +67,12 @@ if DATABASE_URL:
             cv_content        TEXT DEFAULT '',
             FOREIGN KEY(user_id) REFERENCES users(id)
         )""")
-        try:
-            cur.execute("ALTER TABLE user_config ADD COLUMN IF NOT EXISTS cv_content TEXT DEFAULT ''")
-            conn.commit()
-        except Exception:
-            conn.rollback()
+        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''"]:
+            try:
+                cur.execute(f"ALTER TABLE user_config ADD COLUMN IF NOT EXISTS {col}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
         cur.execute(f"""
         CREATE TABLE IF NOT EXISTS candidatures (
             id          {PK},
@@ -173,10 +174,11 @@ else:
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
         """)
-        try:
-            conn.execute("ALTER TABLE user_config ADD COLUMN cv_content TEXT DEFAULT ''")
-        except Exception:
-            pass
+        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''"]:
+            try:
+                conn.execute(f"ALTER TABLE user_config ADD COLUMN {col}")
+            except Exception:
+                pass
         conn.commit()
         conn.close()
 
@@ -273,12 +275,19 @@ def get_config(user_id):
 
 
 def save_cv_content(user_id, content_b64):
-    """Sauvegarde le contenu du CV encodé en base64 dans la DB."""
     _exec(f"UPDATE user_config SET cv_content={PH} WHERE user_id={PH}", (content_b64, user_id))
 
 def get_cv_content(user_id):
     row = _exec(f"SELECT cv_content FROM user_config WHERE user_id={PH}", (user_id,), fetch="one")
     return (row or {}).get("cv_content", "")
+
+def save_linkedin_cookies(user_id, cookies_json):
+    """Sauvegarde les cookies LinkedIn en base pour survivre aux redéploiements."""
+    _exec(f"UPDATE user_config SET linkedin_cookies={PH} WHERE user_id={PH}", (cookies_json, user_id))
+
+def get_linkedin_cookies(user_id):
+    row = _exec(f"SELECT linkedin_cookies FROM user_config WHERE user_id={PH}", (user_id,), fetch="one")
+    return (row or {}).get("linkedin_cookies", "")
 
 def save_config(user_id, data):
     fields = ["openai_key","gmail_address","gmail_password","nom_complet",

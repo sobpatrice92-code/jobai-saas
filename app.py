@@ -202,10 +202,12 @@ def run_agent(agent_id):
             except Exception as e:
                 app.logger.error(f"[CV] Erreur restauration: {e}")
 
+    _oai = os.getenv("OPENAI_API_KEY", "")
+    app.logger.warning(f"[run_agent:{agent_id}] OPENAI_API_KEY {'SET('+str(len(_oai))+'chars)' if _oai else 'MANQUANT'}")
+
     env = os.environ.copy()
     env.update({
-        # Clé OpenAI = celle du serveur (l'utilisateur ne la fournit pas)
-        "OPENAI_API_KEY":    os.getenv("OPENAI_API_KEY", ""),
+        "OPENAI_API_KEY":    _oai,
         "GMAIL_ADDRESS":     cfg.get("gmail_address",""),
         "GMAIL_APP_PASSWORD":cfg.get("gmail_password",""),
         "CV_PATH":           cfg.get("cv_path",""),
@@ -274,6 +276,23 @@ def stream_agent(agent_id):
         yield "data: [TERMINÉ]\n\n"
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
+
+@app.route("/api/linkedin/cookies", methods=["GET","POST"])
+def api_linkedin_cookies():
+    token = request.headers.get("X-User-Token","")
+    try:
+        uid = int(token)
+    except Exception:
+        return jsonify({"error": "token invalide"}), 401
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        cookies_json = json.dumps(data.get("cookies", []))
+        models.save_linkedin_cookies(uid, cookies_json)
+        return jsonify({"ok": True})
+    else:
+        raw = models.get_linkedin_cookies(uid)
+        cookies = json.loads(raw) if raw else []
+        return jsonify({"cookies": cookies})
 
 @app.route("/agents/status")
 @login_required
