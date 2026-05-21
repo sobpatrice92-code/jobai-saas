@@ -248,11 +248,14 @@ def stream_agent(agent_id):
             for line in proc.stdout:
                 line = line.rstrip()
                 if line:
+                    app.logger.warning(f"[AGENT:{agent_id}] {line}")
                     yield f"data: {line}\n\n"
         except Exception as e:
+            app.logger.error(f"[AGENT:{agent_id}] stream error: {e}")
             yield f"data: [ERREUR] {e}\n\n"
         finally:
             running_procs.pop(key, None)
+        app.logger.warning(f"[AGENT:{agent_id}] TERMINÉ")
         yield "data: [TERMINÉ]\n\n"
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
