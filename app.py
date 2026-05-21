@@ -173,8 +173,17 @@ def run_agent(agent_id):
     if agent_id not in AGENTS:
         return jsonify({"error": "Agent inconnu"}), 404
 
-    cfg = models.get_config(uid)
+    cfg  = models.get_config(uid)
     user = models.get_user(uid)
+
+    # Vérifier que le setup est fait
+    if not user.get("setup_done"):
+        return jsonify({"error": "Complétez d'abord le Setup avant de lancer un agent."}), 400
+
+    # Vérifier identifiants LinkedIn pour les agents qui en ont besoin
+    AGENTS_LINKEDIN = {"orchestrateur","indeed_agent","linkedin_agent","profile_optimizer"}
+    if agent_id in AGENTS_LINKEDIN and not cfg.get("linkedin_email"):
+        return jsonify({"error": "Ajoutez votre email et mot de passe LinkedIn dans le Setup."}), 400
 
     user_profile_dir = UPLOAD_FOLDER / str(uid) / "chrome_profile"
     user_profile_dir.mkdir(parents=True, exist_ok=True)

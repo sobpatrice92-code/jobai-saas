@@ -68,11 +68,24 @@
 {% endblock %}
 {% block scripts %}
 <script>
+const activeStreams = {};
 function runAgent(id) {
-  fetch(`/agents/run/${id}`,{method:'POST'}).then(r=>r.json()).then(d=>{
-    if(d.error){alert(d.error);return;}
-    setSt(id,true); startStream(id);
-  });
+  const el = document.getElementById(`log-${id}`);
+  el.innerHTML = '<div style="color:#60A5FA">Démarrage...</div>';
+  fetch(`/agents/run/${id}`,{method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.error){
+        el.innerHTML = `<div style="color:#F87171">[ERREUR] ${d.error}</div>`;
+        alert(d.error);
+        return;
+      }
+      setSt(id,true);
+      startStream(id);
+    })
+    .catch(err=>{
+      el.innerHTML = `<div style="color:#F87171">[ERREUR] ${err}</div>`;
+    });
 }
 function stopAgent(id) {
   fetch(`/agents/stop/${id}`,{method:'POST'}).then(()=>setSt(id,false));
@@ -85,21 +98,29 @@ function setSt(id,on) {
   document.getElementById(`stop-${id}`).disabled = !on;
 }
 function startStream(id) {
+  if(activeStreams[id]) activeStreams[id].close();
   const el = document.getElementById(`log-${id}`);
-  el.innerHTML = '';
   const es = new EventSource(`/agents/stream/${id}`);
+  activeStreams[id] = es;
   es.onmessage = e => {
+    if(e.data === '[TERMINÉ]'){
+      es.close(); delete activeStreams[id]; setSt(id,false); return;
+    }
     const d = document.createElement('div');
     d.textContent = e.data;
-    d.style.color = e.data.includes('✅')||e.data.includes('Envoyé')?'#34D399':
-                    e.data.includes('❌')||e.data.includes('Erreur')?'#F87171':
-                    e.data.includes('🚀')||e.data.includes('INFO')?'#60A5FA':'#94A3B8';
+    d.style.color = e.data.includes('[ERREUR]')?'#F87171':
+                    e.data.includes('OK')||e.data.includes('reussie')?'#34D399':
+                    e.data.includes('PHASE')||e.data.includes('INFO')?'#60A5FA':'#94A3B8';
     el.appendChild(d); el.scrollTop = el.scrollHeight;
-    if(e.data==='[TERMINÉ]'){es.close();setSt(id,false);}
   };
+  es.onerror = ()=>{ es.close(); delete activeStreams[id]; };
 }
 document.querySelectorAll('[id^="m-"]').forEach(m=>{
-  m.addEventListener('shown.bs.modal',()=>startStream(m.id.replace('m-','')));
+  m.addEventListener('shown.bs.modal',()=>{
+    const id = m.id.replace('m-','');
+    // N'ouvre le stream que si l'agent est actif
+    if(document.getElementById(`dot-${id}`)?.classList.contains('on')) startStream(id);
+  });
 });
 setInterval(()=>{
   fetch('/agents/status').then(r=>r.json()).then(d=>{
