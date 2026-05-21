@@ -6,7 +6,9 @@ from flask import (Flask, render_template, request, redirect, url_for,
 from flask_login import (LoginManager, UserMixin, login_user, logout_user,
                           login_required, current_user)
 from werkzeug.utils import secure_filename
-import subprocess, threading, os, json, re, base64
+import subprocess, threading, os, json, re, base64, smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 from datetime import datetime
 import models
@@ -16,13 +18,65 @@ app.secret_key = os.getenv("SECRET_KEY", "jobai-saas-secret-2026-x9z")
 
 models.init_db()
 
+def _send_cookie_reminder(uid, cfg):
+    """Envoie un email de rappel pour rafraîchir les cookies LinkedIn."""
+    gmail    = cfg.get("gmail_address", "")
+    pwd      = cfg.get("gmail_password", "")
+    name     = cfg.get("nom_complet", "Utilisateur")
+    dest     = cfg.get("notif_email", "").strip() or gmail  # notif_email prioritaire
+    if not gmail or not pwd or not dest:
+        return
+    domain    = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+    setup_url = (f"https://{domain}/setup" if domain else "/setup")
+    try:
+        msg = MIMEMultipart()
+        msg["From"]    = gmail
+        msg["To"]      = dest
+        msg["Subject"] = "⚠️ JobAI — Rafraîchissez vos cookies LinkedIn (expire bientôt)"
+        body = f"""Bonjour {name},
+
+Vos cookies LinkedIn sont anciens et risquent d'expirer.
+Sans cookies valides, l'agent ne peut plus postuler en votre nom depuis Railway.
+
+COMMENT RAFRAÎCHIR EN 2 MINUTES :
+
+1. Ouvrez Chrome et connectez-vous à linkedin.com
+2. Cliquez sur l'icône Cookie-Editor (extension Chrome/Firefox)
+3. Cliquez "Export" → "Export as JSON" → Copiez tout le texte
+4. Allez sur votre Setup : {setup_url}
+5. Collez dans le champ "Cookies LinkedIn"
+6. Cliquez "Sauvegarder"
+
+C'est tout ! L'agent reprend automatiquement avec les nouveaux cookies.
+
+Pourquoi ce rappel ?
+LinkedIn expire les sessions après environ 30 jours.
+Ce rappel est envoyé automatiquement tous les 25 jours.
+
+— L'équipe JobAI
+"""
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(gmail, pwd)
+            server.sendmail(gmail, dest, msg.as_string())
+        app.logger.warning(f"[cookies_reminder] Rappel envoyé à {dest} (user {uid})")
+    except Exception as e:
+        app.logger.warning(f"[cookies_reminder] Erreur: {e}")
+
 @app.context_processor
 def inject_trial():
-    """Injecte les infos trial dans tous les templates."""
+    """Injecte les infos trial et état cookies dans tous les templates."""
     if current_user.is_authenticated:
         jours, actif, plan = models.get_trial_info(current_user.id)
-        return {"trial_jours": jours, "trial_actif": actif, "trial_plan": plan}
-    return {"trial_jours": 30, "trial_actif": True, "trial_plan": "trial"}
+        cookie_age      = models.get_cookie_age_days(current_user.id)
+        cookie_never    = cookie_age >= 999
+        cookie_warning  = not cookie_never and cookie_age >= 25
+        cookie_days_left= max(0, 30 - cookie_age) if not cookie_never else 0
+        return {"trial_jours": jours, "trial_actif": actif, "trial_plan": plan,
+                "cookie_age": cookie_age, "cookie_never": cookie_never,
+                "cookie_warning": cookie_warning, "cookie_days_left": cookie_days_left}
+    return {"trial_jours": 30, "trial_actif": True, "trial_plan": "trial",
+            "cookie_age": 999, "cookie_never": True, "cookie_warning": False, "cookie_days_left": 0}
 
 # ── Flask-Login ───────────────────────────────────────────────
 login_manager = LoginManager(app)
@@ -121,6 +175,7 @@ def setup():
             "gmail_password":   request.form.get("gmail_password","").strip(),
             "linkedin_email":   request.form.get("linkedin_email","").strip(),
             "linkedin_password":request.form.get("linkedin_password","").strip(),
+            "notif_email":      request.form.get("notif_email","").strip(),
             "nom_complet":      request.form.get("nom_complet","").strip(),
             "telephone":        request.form.get("telephone","").strip(),
             "adresse":          request.form.get("adresse","").strip(),
@@ -202,6 +257,14 @@ def run_agent(agent_id):
             except Exception as e:
                 app.logger.error(f"[CV] Erreur restauration: {e}")
 
+    # Vérification et rappel cookies LinkedIn
+    AGENTS_LINKEDIN = {"orchestrateur", "indeed_agent", "linkedin_agent", "profile_optimizer"}
+    if agent_id in AGENTS_LINKEDIN:
+        cookie_age = models.get_cookie_age_days(uid)
+        if cookie_age >= 25:
+            app.logger.warning(f"[cookies] user {uid}: cookies {cookie_age}j — envoi rappel email")
+            _send_cookie_reminder(uid, cfg)
+
     _oai = os.getenv("OPENAI_API_KEY", "")
     app.logger.warning(f"[run_agent:{agent_id}] OPENAI_API_KEY {'SET('+str(len(_oai))+'chars)' if _oai else 'MANQUANT'}")
 
@@ -225,6 +288,9 @@ def run_agent(agent_id):
         "LINKEDIN_COOKIES_JSON": cfg.get("linkedin_cookies_json",""),
         "SAAS_API_URL":      os.getenv("RAILWAY_PUBLIC_DOMAIN", "http://localhost:8080"),
         "SAAS_USER_TOKEN":   str(uid),
+        "SAAS_USER_ID":      str(uid),
+        "SMARTPROXY_USER":   os.getenv("SMARTPROXY_USER", ""),
+        "SMARTPROXY_PASS":   os.getenv("SMARTPROXY_PASS", ""),
         "PYTHONUNBUFFERED":  "1",
         "PYTHONIOENCODING":  "utf-8",
     })
@@ -382,6 +448,34 @@ def settings():
     return render_template("settings.html", cfg=cfg, active="settings")
 
 # ── API import CSV (pour intégration agents existants) ────────
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data  = request.get_json(force=True) or {}
+    email = data.get("email", "").strip()
+    pwd   = data.get("password", "")
+    row, err = models.verify_user(email, pwd)
+    if err:
+        return jsonify({"error": err}), 401
+    return jsonify({"user_id": row["id"], "name": row["name"]})
+
+@app.route("/api/my-config")
+def api_my_config():
+    token = request.headers.get("X-User-Token", "")
+    try:
+        uid = int(token)
+    except Exception:
+        return jsonify({"error": "token invalide"}), 401
+    cfg = models.get_config(uid)
+    if not cfg:
+        return jsonify({"error": "config introuvable"}), 404
+    safe = {k: cfg.get(k, "") for k in [
+        "openai_key","gmail_address","gmail_password","nom_complet",
+        "telephone","adresse","ville","province","profession","keywords",
+        "cv_path","cv_content","linkedin_email","linkedin_password",
+        "linkedin_cookies_json","linkedin_li_at","notif_email"
+    ]}
+    return jsonify(safe)
+
 @app.route("/api/candidature", methods=["POST"])
 def api_add_candidature():
     token = request.headers.get("X-User-Token","")

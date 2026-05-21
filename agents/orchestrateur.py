@@ -29,8 +29,12 @@ SEUIL_SCORE      = 65
 HEADLESS         = os.getenv("DISPLAY", "") == ""
 SAAS_API_URL     = os.getenv("SAAS_API_URL", "")
 SAAS_TOKEN       = os.getenv("SAAS_USER_TOKEN", "")
+SAAS_USER_ID     = os.getenv("SAAS_USER_ID", "0")
 if SAAS_API_URL and not SAAS_API_URL.startswith("http"):
     SAAS_API_URL = "https://" + SAAS_API_URL
+
+SMARTPROXY_USER  = os.getenv("SMARTPROXY_USER", "")
+SMARTPROXY_PASS  = os.getenv("SMARTPROXY_PASS", "")
 
 def _save_cookies(cookies):
     if not SAAS_API_URL or not SAAS_TOKEN:
@@ -543,6 +547,10 @@ async def run():
     log("OpenAI : " + ("OK" if client else "MANQUANT (OPENAI_API_KEY non configuree)"))
     log("LinkedIn email : " + (LINKEDIN_EMAIL if LINKEDIN_EMAIL else "MANQUANT"))
     log("CV path : " + CV_PATH)
+    if SMARTPROXY_USER and SMARTPROXY_PASS:
+        log("Proxy : Smartproxy résidentiel (session u" + SAAS_USER_ID + ")")
+    else:
+        log("Proxy : non configuré — SMARTPROXY_USER / SMARTPROXY_PASS manquants")
     if not Path(CV_PATH).exists():
         log("CV non trouve : " + CV_PATH)
         return
@@ -574,7 +582,7 @@ async def run():
             "--no-default-browser-check",
             "--disable-default-apps",
         ]
-        browser = await p.chromium.launch_persistent_context(
+        launch_kwargs = dict(
             user_data_dir=PROFILE_PATH,
             headless=HEADLESS,
             args=stealth_args,
@@ -586,6 +594,14 @@ async def run():
             ),
             ignore_default_args=["--enable-automation"],
         )
+        if SMARTPROXY_USER and SMARTPROXY_PASS:
+            session_id = "u" + SAAS_USER_ID
+            launch_kwargs["proxy"] = {
+                "server":   "http://gate.smartproxy.com:10001",
+                "username": SMARTPROXY_USER + "-session-" + session_id,
+                "password": SMARTPROXY_PASS,
+            }
+        browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
         # Masquer les propriétés qui trahissent Playwright/Chromium
         await page.add_init_script("""
