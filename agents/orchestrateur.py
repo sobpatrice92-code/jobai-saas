@@ -13,7 +13,8 @@ from email import encoders
 from datetime import datetime
 from pathlib import Path
 
-client           = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_openai_key      = os.getenv("OPENAI_API_KEY", "")
+client           = OpenAI(api_key=_openai_key) if _openai_key else None
 CV_PATH          = os.getenv("CV_PATH", "cv.pdf")
 GMAIL_ADDRESS    = os.getenv("GMAIL_ADDRESS")
 GMAIL_PASSWORD   = os.getenv("GMAIL_APP_PASSWORD")
@@ -197,6 +198,8 @@ def generer_lettre(cv_texte, offre):
         "Profil : 8 ans SPA Construction 2018-2024, AutoCAD Revit Civil 3D MS Project, DECOA La Cite Ottawa.\n"
         "Poste : " + titre + " chez " + company + "\nDescription : " + desc
     )
+    if not client:
+        return entete + "Veuillez trouver ci-joint mon CV pour le poste de " + titre + " chez " + company + ".\n\nCordialement,\n\n" + CANDIDAT["nom_complet"]
     resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
@@ -207,6 +210,8 @@ def generer_lettre(cv_texte, offre):
     return entete + corps + "\n\nCordialement,\n\nPatrice Arnold Sob Feukam\n514-236-4628 | sobpatrice@yahoo.fr\nOttawa, Ontario"
 
 def scorer_offre(cv_texte, offre):
+    if not client:
+        return 75
     prompt = (
         "Evalue compatibilite profil/offre. Reponds UNIQUEMENT par un nombre 0-100.\n"
         "Profil:" + cv_texte[:600] + "\nOffre:" + offre.get("titre","") +
@@ -237,6 +242,8 @@ def trouver_site_carrieres(company):
     return None
 
 def chercher_email_rh_gpt(company, poste):
+    if not client:
+        return None
     prompt = (
         "Tu es expert recrutement canadien. Trouve email RH de cette entreprise.\n"
         "Entreprise: " + company + "\nPoste: " + poste + "\nVille: Ottawa Canada\n"
@@ -505,6 +512,9 @@ async def run():
     print("  ORCHESTRATEUR LINKEDIN v8 - TAUX DE SUCCES 100%", flush=True)
     print("  Easy Apply v8 + Formulaire + 64 emails RH directs", flush=True)
     print("="*60, flush=True)
+    log("OpenAI : " + ("OK" if client else "MANQUANT (OPENAI_API_KEY non configuree)"))
+    log("LinkedIn email : " + (LINKEDIN_EMAIL if LINKEDIN_EMAIL else "MANQUANT"))
+    log("CV path : " + CV_PATH)
     if not Path(CV_PATH).exists():
         log("CV non trouve : " + CV_PATH)
         return
