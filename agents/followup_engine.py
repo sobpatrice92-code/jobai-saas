@@ -16,7 +16,8 @@ from pathlib import Path
 # CONFIG
 # ============================================================
 
-client         = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_openai_key    = os.getenv("OPENAI_API_KEY", "")
+client         = OpenAI(api_key=_openai_key) if _openai_key else None
 GMAIL_ADDRESS  = os.getenv("GMAIL_ADDRESS")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 CV_PATH        = os.getenv("CV_PATH", "cv.pdf")
@@ -301,6 +302,8 @@ def generer_lettre_relance(entreprise, poste, date_candidature):
     )
 
     try:
+        if not client:
+            raise Exception("OPENAI_API_KEY non configurée")
         resp = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],

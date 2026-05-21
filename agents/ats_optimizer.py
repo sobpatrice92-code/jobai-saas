@@ -17,7 +17,8 @@ from pathlib import Path
 # CONFIG
 # ============================================================
 
-client       = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_openai_key  = os.getenv("OPENAI_API_KEY", "")
+client       = OpenAI(api_key=_openai_key) if _openai_key else None
 CV_PDF_PATH  = os.getenv("CV_PATH", "cv.pdf")
 OUTPUT_DIR   = os.path.join(os.getenv("PROFILE_PATH", "."), "cv_optimises")
 CSV_SUIVI    = os.path.join(os.getenv("PROFILE_PATH", "."), "suivi_candidatures.csv")
@@ -198,6 +199,8 @@ SECTIONS (dans cet ordre) :
 
 Retourne uniquement le CV optimisé, sans explication ni commentaire.
 """
+    if not client:
+        raise Exception("OPENAI_API_KEY non configurée — ajoutez-la dans les paramètres Railway")
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
