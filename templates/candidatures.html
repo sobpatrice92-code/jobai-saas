@@ -44,7 +44,7 @@
         <td style="color:#64748B;font-size:.75rem;">{{ r.get('plateforme','') }}</td>
         <td>
           {% set sc = r.get('score','0')|string|trim %}
-          {% set sc_int = sc|int if sc.isdigit() else 0 %}
+          {% set sc_int = sc|int %}
           {% if sc_int >= 80 %}<span class="badge-ok fw-bold">{{ sc }}/100</span>
           {% elif sc_int >= 65 %}<span class="badge-warn fw-bold">{{ sc }}/100</span>
           {% elif sc_int > 0 %}<span class="badge-inf">{{ sc }}/100</span>
