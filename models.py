@@ -67,7 +67,7 @@ if DATABASE_URL:
             cv_content        TEXT DEFAULT '',
             FOREIGN KEY(user_id) REFERENCES users(id)
         )""")
-        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''", "linkedin_li_at TEXT DEFAULT ''", "linkedin_cookies_json TEXT DEFAULT ''"]:
+        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''", "linkedin_li_at TEXT DEFAULT ''", "linkedin_cookies_json TEXT DEFAULT ''", "linkedin_cookies_updated_at TEXT DEFAULT ''"]:
             try:
                 cur.execute(f"ALTER TABLE user_config ADD COLUMN IF NOT EXISTS {col}")
                 conn.commit()
@@ -174,7 +174,7 @@ else:
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
         """)
-        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''", "linkedin_li_at TEXT DEFAULT ''", "linkedin_cookies_json TEXT DEFAULT ''"]:
+        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''", "linkedin_li_at TEXT DEFAULT ''", "linkedin_cookies_json TEXT DEFAULT ''", "linkedin_cookies_updated_at TEXT DEFAULT ''"]:
             try:
                 conn.execute(f"ALTER TABLE user_config ADD COLUMN {col}")
             except Exception:
@@ -283,17 +283,41 @@ def get_cv_content(user_id):
 
 def save_linkedin_cookies(user_id, cookies_json):
     """Sauvegarde les cookies LinkedIn en base pour survivre aux redéploiements."""
-    _exec(f"UPDATE user_config SET linkedin_cookies={PH} WHERE user_id={PH}", (cookies_json, user_id))
+    now = datetime.now().isoformat()
+    _exec(f"UPDATE user_config SET linkedin_cookies={PH}, linkedin_cookies_updated_at={PH} WHERE user_id={PH}",
+          (cookies_json, now, user_id))
 
 def get_linkedin_cookies(user_id):
     row = _exec(f"SELECT linkedin_cookies FROM user_config WHERE user_id={PH}", (user_id,), fetch="one")
     return (row or {}).get("linkedin_cookies", "")
 
+def get_cookie_age_days(user_id):
+    """Retourne le nombre de jours depuis la dernière mise à jour des cookies (999 = jamais configurés)."""
+    row = _exec(
+        f"SELECT linkedin_cookies_updated_at, linkedin_cookies_json FROM user_config WHERE user_id={PH}",
+        (user_id,), fetch="one"
+    )
+    if not row:
+        return 999
+    has_cookies = bool((row.get("linkedin_cookies_json") or "").strip())
+    updated_at  = (row.get("linkedin_cookies_updated_at") or "").strip()
+    if not has_cookies:
+        return 999
+    if not updated_at:
+        return 25  # cookies présents mais pas de date → considérer comme anciens
+    try:
+        dt = datetime.fromisoformat(updated_at)
+        return (datetime.now() - dt).days
+    except Exception:
+        return 25
+
 def save_config(user_id, data):
+    if "linkedin_cookies_json" in data and data["linkedin_cookies_json"].strip():
+        data["linkedin_cookies_updated_at"] = datetime.now().isoformat()
     fields = ["openai_key","gmail_address","gmail_password","nom_complet",
               "telephone","adresse","ville","province","profession","keywords",
               "cv_path","linkedin_email","linkedin_password","cv_content",
-              "linkedin_li_at","linkedin_cookies_json"]
+              "linkedin_li_at","linkedin_cookies_json","linkedin_cookies_updated_at"]
     conn = get_db()
     if DATABASE_URL:
         cur = conn.cursor()
