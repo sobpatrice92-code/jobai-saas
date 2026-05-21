@@ -448,6 +448,34 @@ def settings():
     return render_template("settings.html", cfg=cfg, active="settings")
 
 # ── API import CSV (pour intégration agents existants) ────────
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data  = request.get_json(force=True) or {}
+    email = data.get("email", "").strip()
+    pwd   = data.get("password", "")
+    row, err = models.verify_user(email, pwd)
+    if err:
+        return jsonify({"error": err}), 401
+    return jsonify({"user_id": row["id"], "name": row["name"]})
+
+@app.route("/api/my-config")
+def api_my_config():
+    token = request.headers.get("X-User-Token", "")
+    try:
+        uid = int(token)
+    except Exception:
+        return jsonify({"error": "token invalide"}), 401
+    cfg = models.get_config(uid)
+    if not cfg:
+        return jsonify({"error": "config introuvable"}), 404
+    safe = {k: cfg.get(k, "") for k in [
+        "openai_key","gmail_address","gmail_password","nom_complet",
+        "telephone","adresse","ville","province","profession","keywords",
+        "cv_path","cv_content","linkedin_email","linkedin_password",
+        "linkedin_cookies_json","linkedin_li_at","notif_email"
+    ]}
+    return jsonify(safe)
+
 @app.route("/api/candidature", methods=["POST"])
 def api_add_candidature():
     token = request.headers.get("X-User-Token","")
