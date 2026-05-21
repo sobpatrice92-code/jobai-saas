@@ -575,20 +575,50 @@ async def run():
                     return
                 log("Connexion LinkedIn...")
                 await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(random.uniform(1.5, 2.5))
-                await page.type("#username", LINKEDIN_EMAIL, delay=random.randint(60, 120))
-                await asyncio.sleep(random.uniform(0.5, 1.2))
-                await page.type("#password", LINKEDIN_PASSWORD, delay=random.randint(60, 120))
+                await asyncio.sleep(3)
+                log("URL login : " + page.url[:80])
+                # Attendre le champ email avec timeout court pour diagnostiquer
+                try:
+                    await page.wait_for_selector("#username", timeout=15000)
+                except Exception:
+                    log("Champ #username introuvable — URL : " + page.url[:80])
+                    log("LinkedIn affiche probablement un CAPTCHA ou verification")
+                    # Essayer quand même avec les sélecteurs alternatifs
+                    for sel in ["input[name='session_key']", "input[type='email']", "input[autocomplete='email']"]:
+                        try:
+                            await page.wait_for_selector(sel, timeout=5000)
+                            await page.fill(sel, LINKEDIN_EMAIL)
+                            log("Email rempli via " + sel)
+                            break
+                        except Exception:
+                            continue
+                    else:
+                        log("Impossible de remplir email — arret")
+                        return
+                else:
+                    await page.fill("#username", LINKEDIN_EMAIL)
+                    log("Email rempli")
                 await asyncio.sleep(random.uniform(0.8, 1.5))
+                try:
+                    await page.fill("#password", LINKEDIN_PASSWORD)
+                except Exception:
+                    for sel in ["input[name='session_password']", "input[type='password']"]:
+                        try:
+                            await page.fill(sel, LINKEDIN_PASSWORD)
+                            break
+                        except Exception:
+                            continue
+                await asyncio.sleep(random.uniform(0.5, 1.0))
                 await page.click("button[type='submit']")
                 await asyncio.sleep(8)
                 url_now = page.url
                 log("URL apres login : " + url_now[:80])
                 if "checkpoint" in url_now:
-                    log("LinkedIn demande verification — connectez-vous manuellement une fois")
+                    log("LinkedIn demande une verification de securite")
+                    log("=> Connectez-vous manuellement sur LinkedIn depuis votre navigateur une fois pour valider")
                     return
-                if "login" in url_now:
-                    log("Echec connexion LinkedIn — verifiez vos identifiants")
+                if "login" in url_now or "authwall" in url_now:
+                    log("Echec connexion LinkedIn — verifiez email/mot de passe dans le Setup")
                     return
                 log("Connexion LinkedIn reussie")
             else:
