@@ -534,13 +534,38 @@ async def run():
                     log("Lock supprime : " + lock)
                 except Exception:
                     pass
+        stealth_args = [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--window-size=1400,900",
+            "--disable-extensions",
+            "--disable-gpu",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-default-apps",
+        ]
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_PATH,
             headless=HEADLESS,
-            args=["--no-sandbox", "--disable-dev-shm-usage"] if HEADLESS else [],
-            viewport={"width": 1400, "height": 900}
+            args=stealth_args,
+            viewport={"width": 1400, "height": 900},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            ignore_default_args=["--enable-automation"],
         )
         page = browser.pages[0] if browser.pages else await browser.new_page()
+        # Masquer les propriétés qui trahissent Playwright/Chromium
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['fr-FR','fr','en-US','en']});
+            window.chrome = {runtime: {}};
+        """)
         try:
             await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(4)
@@ -550,11 +575,19 @@ async def run():
                     return
                 log("Connexion LinkedIn...")
                 await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
-                await page.fill("#username", LINKEDIN_EMAIL)
-                await page.fill("#password", LINKEDIN_PASSWORD)
+                await asyncio.sleep(random.uniform(1.5, 2.5))
+                await page.type("#username", LINKEDIN_EMAIL, delay=random.randint(60, 120))
+                await asyncio.sleep(random.uniform(0.5, 1.2))
+                await page.type("#password", LINKEDIN_PASSWORD, delay=random.randint(60, 120))
+                await asyncio.sleep(random.uniform(0.8, 1.5))
                 await page.click("button[type='submit']")
-                await asyncio.sleep(5)
-                if "login" in page.url or "checkpoint" in page.url:
+                await asyncio.sleep(8)
+                url_now = page.url
+                log("URL apres login : " + url_now[:80])
+                if "checkpoint" in url_now:
+                    log("LinkedIn demande verification — connectez-vous manuellement une fois")
+                    return
+                if "login" in url_now:
                     log("Echec connexion LinkedIn — verifiez vos identifiants")
                     return
                 log("Connexion LinkedIn reussie")
