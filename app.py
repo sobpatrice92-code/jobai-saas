@@ -206,11 +206,13 @@ def run_agent(agent_id):
         "LINKEDIN_PASSWORD": cfg.get("linkedin_password",""),
         "SAAS_API_URL":      os.getenv("RAILWAY_PUBLIC_DOMAIN", "http://localhost:8080"),
         "SAAS_USER_TOKEN":   str(uid),
+        "PYTHONUNBUFFERED":  "1",
+        "PYTHONIOENCODING":  "utf-8",
     })
 
     try:
         proc = subprocess.Popen(
-            [PYTHON, str(AGENTS_DIR / AGENTS[agent_id]["script"])],
+            [PYTHON, "-u", str(AGENTS_DIR / AGENTS[agent_id]["script"])],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             cwd=str(AGENTS_DIR), encoding="utf-8", errors="replace",
             bufsize=1, env=env

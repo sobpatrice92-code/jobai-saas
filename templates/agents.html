@@ -69,27 +69,49 @@
 {% block scripts %}
 <script>
 const activeStreams = {};
-function runAgent(id) {
+
+function addLog(id, text, color) {
   const el = document.getElementById(`log-${id}`);
-  el.innerHTML = '<div style="color:#60A5FA">Démarrage...</div>';
+  const d = document.createElement('div');
+  d.textContent = text;
+  d.style.color = color || (
+    text.includes('[ERREUR]')?'#F87171':
+    text.includes('OK')||text.includes('reussie')||text.includes('TERMINÉ')?'#34D399':
+    text.includes('PHASE')||text.includes('INFO')||text.includes('Démarrage')?'#60A5FA':'#94A3B8'
+  );
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+function runAgent(id) {
+  // Ouvrir automatiquement le modal de logs
+  const modalEl = document.getElementById(`m-${id}`);
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+  const el = document.getElementById(`log-${id}`);
+  el.innerHTML = '';
+  addLog(id, '⏳ Démarrage de l\'agent...', '#60A5FA');
+
   fetch(`/agents/run/${id}`,{method:'POST'})
     .then(r=>r.json())
     .then(d=>{
       if(d.error){
-        el.innerHTML = `<div style="color:#F87171">[ERREUR] ${d.error}</div>`;
-        alert(d.error);
+        addLog(id, '[ERREUR] ' + d.error, '#F87171');
         return;
       }
       setSt(id,true);
+      addLog(id, '✅ Agent lancé — connexion aux logs...', '#34D399');
       startStream(id);
     })
     .catch(err=>{
-      el.innerHTML = `<div style="color:#F87171">[ERREUR] ${err}</div>`;
+      addLog(id, '[ERREUR] ' + err, '#F87171');
     });
 }
+
 function stopAgent(id) {
   fetch(`/agents/stop/${id}`,{method:'POST'}).then(()=>setSt(id,false));
 }
+
 function setSt(id,on) {
   document.getElementById(`dot-${id}`).className = 'dot '+(on?'on':'off');
   const l = document.getElementById(`lbl-${id}`);
@@ -97,31 +119,35 @@ function setSt(id,on) {
   document.getElementById(`run-${id}`).disabled = on;
   document.getElementById(`stop-${id}`).disabled = !on;
 }
+
 function startStream(id) {
   if(activeStreams[id]) activeStreams[id].close();
-  const el = document.getElementById(`log-${id}`);
   const es = new EventSource(`/agents/stream/${id}`);
   activeStreams[id] = es;
   es.onmessage = e => {
     if(e.data === '[TERMINÉ]'){
-      es.close(); delete activeStreams[id]; setSt(id,false); return;
+      es.close(); delete activeStreams[id]; setSt(id,false);
+      addLog(id, '✅ Agent terminé.', '#34D399');
+      return;
     }
-    const d = document.createElement('div');
-    d.textContent = e.data;
-    d.style.color = e.data.includes('[ERREUR]')?'#F87171':
-                    e.data.includes('OK')||e.data.includes('reussie')?'#34D399':
-                    e.data.includes('PHASE')||e.data.includes('INFO')?'#60A5FA':'#94A3B8';
-    el.appendChild(d); el.scrollTop = el.scrollHeight;
+    addLog(id, e.data);
   };
-  es.onerror = ()=>{ es.close(); delete activeStreams[id]; };
+  es.onerror = ()=>{
+    es.close(); delete activeStreams[id];
+    addLog(id, '⚠️ Connexion stream interrompue.', '#F59E0B');
+  };
 }
+
+// Ouvrir le stream si l'agent tourne quand on ouvre le modal manuellement
 document.querySelectorAll('[id^="m-"]').forEach(m=>{
   m.addEventListener('shown.bs.modal',()=>{
     const id = m.id.replace('m-','');
-    // N'ouvre le stream que si l'agent est actif
-    if(document.getElementById(`dot-${id}`)?.classList.contains('on')) startStream(id);
+    if(document.getElementById(`dot-${id}`)?.classList.contains('on') && !activeStreams[id])
+      startStream(id);
   });
 });
+
+// Polling statut toutes les 5s
 setInterval(()=>{
   fetch('/agents/status').then(r=>r.json()).then(d=>{
     Object.entries(d).forEach(([id,on])=>setSt(id,on));
