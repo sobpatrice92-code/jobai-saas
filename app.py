@@ -6,7 +6,7 @@ from flask import (Flask, render_template, request, redirect, url_for,
 from flask_login import (LoginManager, UserMixin, login_user, logout_user,
                           login_required, current_user)
 from werkzeug.utils import secure_filename
-import subprocess, threading, os, json, re
+import subprocess, threading, os, json, re, base64
 from pathlib import Path
 from datetime import datetime
 import models
@@ -129,14 +129,16 @@ def setup():
             "profession":       request.form.get("profession","").strip(),
             "keywords":         request.form.get("keywords","").strip(),
         }
-        # CV Upload
+        # CV Upload — sauvegarde fichier + contenu en base (Railway = filesystem éphémère)
         cv = request.files.get("cv")
         if cv and cv.filename.lower().endswith(".pdf"):
             user_dir = UPLOAD_FOLDER / str(current_user.id)
             user_dir.mkdir(exist_ok=True)
             cv_path = user_dir / "cv.pdf"
-            cv.save(str(cv_path))
-            data["cv_path"] = str(cv_path)
+            cv_bytes = cv.read()
+            cv_path.write_bytes(cv_bytes)
+            data["cv_path"]    = str(cv_path)
+            data["cv_content"] = base64.b64encode(cv_bytes).decode("utf-8")
         models.save_config(current_user.id, data)
         return redirect(url_for("dashboard"))
     cfg = models.get_config(current_user.id)
@@ -187,6 +189,19 @@ def run_agent(agent_id):
 
     user_profile_dir = UPLOAD_FOLDER / str(uid) / "chrome_profile"
     user_profile_dir.mkdir(parents=True, exist_ok=True)
+
+    # Restaurer le CV depuis la DB si le fichier a disparu (Railway filesystem éphémère)
+    cv_path = cfg.get("cv_path", "")
+    if cv_path and not Path(cv_path).exists():
+        cv_content = models.get_cv_content(uid)
+        if cv_content:
+            try:
+                Path(cv_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(cv_path).write_bytes(base64.b64decode(cv_content))
+                app.logger.warning(f"[CV] Restauré depuis DB pour user {uid}: {cv_path}")
+            except Exception as e:
+                app.logger.error(f"[CV] Erreur restauration: {e}")
+
     env = os.environ.copy()
     env.update({
         # Clé OpenAI = celle du serveur (l'utilisateur ne la fournit pas)

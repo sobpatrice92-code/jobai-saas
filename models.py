@@ -62,10 +62,16 @@ if DATABASE_URL:
             profession      TEXT DEFAULT '',
             keywords        TEXT DEFAULT '',
             cv_path         TEXT DEFAULT '',
-            linkedin_email  TEXT DEFAULT '',
+            linkedin_email    TEXT DEFAULT '',
             linkedin_password TEXT DEFAULT '',
+            cv_content        TEXT DEFAULT '',
             FOREIGN KEY(user_id) REFERENCES users(id)
         )""")
+        try:
+            cur.execute("ALTER TABLE user_config ADD COLUMN cv_content TEXT DEFAULT ''")
+            conn.commit()
+        except Exception:
+            pass
         cur.execute(f"""
         CREATE TABLE IF NOT EXISTS candidatures (
             id          {PK},
@@ -142,6 +148,7 @@ else:
             cv_path           TEXT DEFAULT '',
             linkedin_email    TEXT DEFAULT '',
             linkedin_password TEXT DEFAULT '',
+            cv_content        TEXT DEFAULT '',
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS candidatures (
@@ -166,6 +173,10 @@ else:
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
         """)
+        try:
+            conn.execute("ALTER TABLE user_config ADD COLUMN cv_content TEXT DEFAULT ''")
+        except Exception:
+            pass
         conn.commit()
         conn.close()
 
@@ -261,10 +272,18 @@ def get_config(user_id):
     return row if row else {}
 
 
+def save_cv_content(user_id, content_b64):
+    """Sauvegarde le contenu du CV encodé en base64 dans la DB."""
+    _exec(f"UPDATE user_config SET cv_content={PH} WHERE user_id={PH}", (content_b64, user_id))
+
+def get_cv_content(user_id):
+    row = _exec(f"SELECT cv_content FROM user_config WHERE user_id={PH}", (user_id,), fetch="one")
+    return (row or {}).get("cv_content", "")
+
 def save_config(user_id, data):
     fields = ["openai_key","gmail_address","gmail_password","nom_complet",
               "telephone","adresse","ville","province","profession","keywords",
-              "cv_path","linkedin_email","linkedin_password"]
+              "cv_path","linkedin_email","linkedin_password","cv_content"]
     conn = get_db()
     if DATABASE_URL:
         cur = conn.cursor()
