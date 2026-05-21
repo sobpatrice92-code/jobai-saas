@@ -265,8 +265,11 @@ def run_agent(agent_id):
             app.logger.warning(f"[cookies] user {uid}: cookies {cookie_age}j — envoi rappel email")
             _send_cookie_reminder(uid, cfg)
 
-    _oai = os.getenv("OPENAI_API_KEY", "")
+    _oai  = os.getenv("OPENAI_API_KEY", "")
+    _sp_u = os.getenv("SMARTPROXY_USER", "")
+    _sp_p = os.getenv("SMARTPROXY_PASS", "")
     app.logger.warning(f"[run_agent:{agent_id}] OPENAI_API_KEY {'SET('+str(len(_oai))+'chars)' if _oai else 'MANQUANT'}")
+    app.logger.warning(f"[run_agent:{agent_id}] SMARTPROXY_USER {'SET='+_sp_u if _sp_u else 'VIDE — variable non definie dans Railway'}")
 
     env = os.environ.copy()
     env.update({
