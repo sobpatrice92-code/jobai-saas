@@ -9,7 +9,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-import os, csv, re
+import os, csv, re, requests as _req
 from datetime import datetime
 from pathlib import Path
 
@@ -54,80 +54,107 @@ def lire_pdf(path):
 # LIRE LES MEILLEURES CANDIDATURES DU CSV
 # ============================================================
 
+def lire_candidatures_saas():
+    """Lit les candidatures depuis l'API SaaS (Railway)."""
+    api_url = os.getenv("SAAS_API_URL", "")
+    token   = os.getenv("SAAS_USER_TOKEN", "")
+    if not api_url or not token:
+        return []
+    if not api_url.startswith("http"):
+        api_url = "https://" + api_url
+    try:
+        resp = _req.get(
+            f"{api_url}/api/candidatures",
+            headers={"X-User-Token": token},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            rows = data.get("rows", [])
+            log(f"SaaS : {len(rows)} candidatures recuperees")
+            return rows
+    except Exception as e:
+        log(f"SaaS API erreur : {e}")
+    return []
+
+
 def lire_meilleures_candidatures():
     """
     Lit le CSV de suivi et retourne les meilleures candidatures
     (score élevé, statut positif, dédoublonnées par entreprise).
     """
-    chemin = Path(CSV_SUIVI)
-    if not chemin.exists():
-        log(f"❌ CSV introuvable : {CSV_SUIVI}")
-        return []
-
-    candidatures = []
     vues = set()
+    candidatures = []
 
-    PLATEFORMES = {"linkedin", "indeed", "job bank", "glassdoor", "workopolis", "n/a"}
-
-    def corriger_colonnes(c):
-        """Si poste=URL et plateforme=nom entreprise, les colonnes sont inversées."""
-        e  = c.get("entreprise", "")
-        p  = c.get("poste", "")
-        pf = c.get("plateforme", "")
-        li = c.get("lien", "")
-        if p.startswith("http") and pf.lower() not in PLATEFORMES:
-            pf_lower = pf.lower()
-            if "indeed" in p:     pf_correct = "Indeed"
-            elif "linkedin" in p: pf_correct = "LinkedIn"
-            elif "jobbank" in p:  pf_correct = "Job Bank Canada"
-            elif "glassdoor" in p:pf_correct = "Glassdoor"
-            else:                 pf_correct = li if li.lower() in PLATEFORMES else "Autre"
-            return dict(c, entreprise=pf, poste=e, lien=p, plateforme=pf_correct)
-        return c
-
-    for encoding in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
-        try:
-            with open(chemin, "r", encoding=encoding, errors="replace") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    c = {k.strip(): (v or "").strip() for k, v in row.items() if k}
-                    c = corriger_colonnes(c)
-                    entreprise = c.get("entreprise", "")
-                    poste      = c.get("poste", "")
-                    statut     = c.get("statut", "").lower()
-                    score_str  = c.get("score", "0")
-
-                    if not entreprise or not poste:
-                        continue
-
-                    # Score
-                    try:
-                        score = int(re.search(r"\d+", score_str).group())
-                    except Exception:
-                        score = 0
-
-                    # Filtrer par statut et score
-                    if not any(s in statut for s in STATUTS_OK):
-                        continue
-                    if score < SCORE_MIN:
-                        continue
-
-                    # Dédoublonner par entreprise
-                    cle = entreprise.lower()[:25]
-                    if cle in vues:
-                        continue
-                    vues.add(cle)
-
-                    candidatures.append({
-                        "entreprise": entreprise,
-                        "poste":      poste,
-                        "score":      score,
-                        "lien":       c.get("lien", ""),
-                        "plateforme": c.get("plateforme", "LinkedIn"),
-                    })
-            break
-        except Exception:
-            continue
+    # Essayer d'abord l'API SaaS (Railway)
+    rows_saas = lire_candidatures_saas()
+    if rows_saas:
+        for c in rows_saas:
+            entreprise = c.get("entreprise", "")
+            poste      = c.get("poste", "")
+            statut     = c.get("statut", "").lower()
+            score_str  = str(c.get("score", "0"))
+            try:
+                score = int(re.search(r"\d+", score_str).group()) if re.search(r"\d+", score_str) else 0
+            except Exception:
+                score = 0
+            if not entreprise or not poste:
+                continue
+            if not any(s in statut for s in STATUTS_OK):
+                continue
+            if score < SCORE_MIN:
+                continue
+            cle = entreprise.lower()[:25]
+            if cle in vues:
+                continue
+            vues.add(cle)
+            candidatures.append({
+                "entreprise": entreprise,
+                "poste":      poste,
+                "score":      score,
+                "lien":       c.get("lien", ""),
+                "plateforme": c.get("plateforme", "LinkedIn"),
+            })
+    else:
+        # Fallback CSV local
+        chemin = Path(CSV_SUIVI)
+        if not chemin.exists():
+            log(f"CSV introuvable : {CSV_SUIVI}")
+            return []
+        for encoding in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
+            try:
+                with open(chemin, "r", encoding=encoding, errors="replace") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        c = {k.strip(): (v or "").strip() for k, v in row.items() if k}
+                        entreprise = c.get("entreprise", "")
+                        poste      = c.get("poste", "")
+                        statut     = c.get("statut", "").lower()
+                        score_str  = c.get("score", "0")
+                        if not entreprise or not poste:
+                            continue
+                        try:
+                            score = int(re.search(r"\d+", score_str).group())
+                        except Exception:
+                            score = 0
+                        if not any(s in statut for s in STATUTS_OK):
+                            continue
+                        if score < SCORE_MIN:
+                            continue
+                        cle = entreprise.lower()[:25]
+                        if cle in vues:
+                            continue
+                        vues.add(cle)
+                        candidatures.append({
+                            "entreprise": entreprise,
+                            "poste":      poste,
+                            "score":      score,
+                            "lien":       c.get("lien", ""),
+                            "plateforme": c.get("plateforme", "LinkedIn"),
+                        })
+                break
+            except Exception:
+                continue
 
     # Trier par score décroissant
     candidatures.sort(key=lambda x: x["score"], reverse=True)

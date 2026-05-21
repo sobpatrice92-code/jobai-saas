@@ -269,7 +269,7 @@ def agents_status():
 @login_required
 def profile_pending():
     uid      = current_user.id
-    pending  = Path(f"C:/ai_linkedin_bot/user_data/{uid}/pending_profile.json")
+    pending  = UPLOAD_FOLDER / str(uid) / "pending_profile.json"
     if not pending.exists():
         return jsonify({"status": "none"})
     try:
@@ -344,7 +344,6 @@ def settings():
 @app.route("/api/candidature", methods=["POST"])
 def api_add_candidature():
     token = request.headers.get("X-User-Token","")
-    # Simple token = user_id encodé
     try:
         uid = int(token)
     except:
@@ -352,6 +351,18 @@ def api_add_candidature():
     data = request.json or {}
     models.add_candidature(uid, data)
     return jsonify({"status": "ok"})
+
+@app.route("/api/candidatures")
+def api_get_candidatures():
+    token = request.headers.get("X-User-Token","")
+    try:
+        uid = int(token)
+    except:
+        return jsonify({"error": "token invalide"}), 401
+    q      = request.args.get("q", "")
+    statut = request.args.get("statut", "")
+    rows, total = models.get_candidatures(uid, q, statut, 200, 0)
+    return jsonify({"rows": rows, "total": total})
 
 if __name__ == "__main__":
     models.init_db()

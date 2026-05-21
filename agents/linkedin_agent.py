@@ -3,6 +3,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 from dotenv import load_dotenv
 load_dotenv()
 
+import json
 from openai import OpenAI
 from playwright.async_api import async_playwright
 import os, asyncio, random, requests, base64, re, imaplib, smtplib, time
@@ -19,14 +20,16 @@ from pathlib import Path
 # ============================================================
 
 client       = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-PROFILE_PATH = os.getenv("PROFILE_PATH", os.getenv("PROFILE_PATH", "chrome_profile"))
-HEADLESS     = os.getenv("HEADLESS", "false").lower() == "true"
+PROFILE_PATH = os.getenv("PROFILE_PATH", "chrome_profile")
+HEADLESS     = os.getenv("DISPLAY", "") == ""
 
-PHOTOS_DIR         = os.getenv("PHOTOS_DIR", "photos")
-PHOTOS_UTILISEES   = os.path.join(os.getenv("PHOTOS_DIR", "photos"), "photos_utilisees.txt")
+PHOTOS_DIR       = os.getenv("PHOTOS_DIR", "photos")
+PHOTOS_UTILISEES = os.path.join(os.getenv("PHOTOS_DIR", "photos"), "photos_utilisees.txt")
 
-GMAIL_ADDRESS  = os.getenv("GMAIL_ADDRESS")
-GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+GMAIL_ADDRESS     = os.getenv("GMAIL_ADDRESS")
+GMAIL_PASSWORD    = os.getenv("GMAIL_APP_PASSWORD")
+LINKEDIN_EMAIL    = os.getenv("LINKEDIN_EMAIL", "")
+LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD", "")
 
 TAG_NOM      = "Fredy Beukam"
 TAG_LINKEDIN = "@Fredy Beukam"
@@ -106,7 +109,7 @@ def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 # ============================================================
-# GÉNÉRER IMAGE RÉALISTE — gpt-image-1 (modèle actuel)
+# CHOISIR PHOTO
 # ============================================================
 
 def _charger_utilisees():
@@ -133,14 +136,12 @@ def choisir_photo(theme_fr, theme_en):
     utilisees   = _charger_utilisees()
     disponibles = [f for f in toutes if f.name not in utilisees]
 
-    # Toutes utilisées → réinitialiser le cycle
     if not disponibles and toutes:
-        log("🔄 Toutes les photos déjà publiées — réinitialisation du cycle")
+        log("Toutes les photos deja publiees — reinitialisation du cycle")
         Path(PHOTOS_UTILISEES).write_text("", encoding="utf-8")
         disponibles = toutes
 
     if disponibles:
-        # Essayer de matcher le thème via mots-clés dans le nom de fichier
         mots = set(w for w in re.sub(r'[^a-z ]', '', theme_en.lower()).split() if len(w) > 3)
         scored = [(sum(1 for m in mots if m in f.stem.lower()), f) for f in disponibles]
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -148,16 +149,15 @@ def choisir_photo(theme_fr, theme_en):
 
         if meilleur_score > 0:
             photo = meilleure
-            log(f"📷 Photo adaptée au thème ({meilleur_score} mots) : {photo.name}")
+            log(f"Photo adaptee au theme ({meilleur_score} mots) : {photo.name}")
         else:
             photo = random.choice(disponibles)
-            log(f"📷 Photo chantier sélectionnée : {photo.name}")
+            log(f"Photo chantier selectionnee : {photo.name}")
 
         _marquer_utilisee(photo.name)
         return str(photo)
 
-    # Aucune photo locale → générer une image IA adaptée au thème exact
-    log("🎨 Génération image IA adaptée au thème...")
+    log("Generation image IA adaptee au theme...")
     try:
         prompt = (
             f"Ultra-realistic professional documentary photograph: {theme_en}. "
@@ -183,23 +183,21 @@ def choisir_photo(theme_fr, theme_en):
         with open(ai_path, "wb") as f:
             f.write(img_data)
         _marquer_utilisee(ai_path.name)
-        log(f"✅ Image IA générée et sauvegardée : {ai_path.name}")
+        log(f"Image IA generee : {ai_path.name}")
         return str(ai_path)
-
     except Exception as e:
-        log(f"⚠️ Génération image erreur : {e}")
+        log(f"Generation image erreur : {e}")
         return None
 
 # ============================================================
-# GÉNÉRER POST — contenu humain, précis, génie civil
+# GÉNÉRER POST
 # ============================================================
 
 def generer_post(theme_fr):
+    user_name    = os.getenv("USER_NAME", "Patrice Arnold Sob Feukam")
+    user_prof    = os.getenv("USER_PROFESSION", "technicien en génie civil et gestionnaire de projets de construction")
     prompt = f"""
-Tu es Patrice Arnold Sob Feukam, technicien en génie civil et gestionnaire de projets de construction.
-8 ans d'expérience terrain chez SPA Construction SARL au Cameroun (2018-2024).
-Actuellement étudiant en Technologie de la construction à La Cité, Ottawa.
-Bilingue FR/EN. Maîtrise : AutoCAD, Revit, Civil 3D, MS Project. Carte ASP. PMP en cours.
+Tu es {user_name}, {user_prof}.
 Tu cherches activement un emploi en génie civil et gestion de projets à Ottawa-Gatineau.
 
 Rédige un post LinkedIn professionnel sur ce thème précis :
@@ -218,19 +216,6 @@ RÈGLES STRICTES :
 - NE JAMAIS dire que c'est généré par IA
 - NE PAS utiliser de formules creuses comme "la clé du succès" ou "un outil indispensable"
 - Retourne UNIQUEMENT le texte du post, rien d'autre
-
-EXEMPLE DE FORMAT ATTENDU (structure, pas contenu) :
-[Accroche forte sur une ligne] 🏗️
-
-[Idée 1 — constat terrain]
-
-[Idée 2 — chiffre ou outil précis]
-
-[Idée 3 — leçon ou conseil concret]
-
-#Hashtag1 #Hashtag2 #Hashtag3
-
-@Fredy Beukam
 """
     resp = client.chat.completions.create(
         model="gpt-4o",
@@ -243,11 +228,9 @@ EXEMPLE DE FORMAT ATTENDU (structure, pas contenu) :
 # APPROBATION EMAIL AVANT PUBLICATION
 # ============================================================
 
-PENDING_POST = Path(os.path.join(os.getenv("PROFILE_PATH", "."), "pending_post.json"))
+PENDING_POST = Path(os.path.join(PROFILE_PATH, "pending_post.json"))
 
 def envoyer_approbation(post_text, image_path, theme_fr):
-    """Écrit le post dans pending_post.json et envoie une notif email (sans attendre réponse)."""
-    # 1. Écrire dans le fichier JSON pour le dashboard web
     data = {
         "status":       "pending",
         "text":         post_text,
@@ -255,20 +238,20 @@ def envoyer_approbation(post_text, image_path, theme_fr):
         "theme":        theme_fr,
         "generated_at": datetime.now().isoformat(),
     }
+    PENDING_POST.parent.mkdir(parents=True, exist_ok=True)
     PENDING_POST.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    log(f"📋 Post écrit dans pending_post.json")
+    log("Post ecrit dans pending_post.json")
 
-    # 2. Notif email simple (sans besoin de répondre)
     try:
         msg = MIMEMultipart()
         msg["From"]    = GMAIL_ADDRESS
         msg["To"]      = GMAIL_ADDRESS
-        msg["Subject"] = f"[JOBAI] Post LinkedIn prêt — approbation requise"
+        msg["Subject"] = "[JOBAI] Post LinkedIn pret — approbation requise"
         corps = (
-            "Bonjour Patrice,\n\n"
-            "Un post LinkedIn est prêt. Approuvez-le depuis le dashboard :\n"
-            "→ Ouvrez l'app JobAI → onglet LinkedIn Post\n\n"
-            "─" * 40 + "\n\n" + post_text + "\n\n" + "─" * 40 + "\n\n"
+            "Bonjour,\n\n"
+            "Un post LinkedIn est pret. Approuvez-le depuis le dashboard :\n"
+            "-> Ouvrez l'app JobAI -> onglet LinkedIn Post\n\n"
+            + "─" * 40 + "\n\n" + post_text + "\n\n" + "─" * 40 + "\n\n"
             "Votre bot LinkedIn"
         )
         msg.attach(MIMEText(corps, "plain", "utf-8"))
@@ -283,28 +266,27 @@ def envoyer_approbation(post_text, image_path, theme_fr):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as srv:
             srv.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
             srv.sendmail(GMAIL_ADDRESS, GMAIL_ADDRESS, msg.as_string())
-        log(f"📧 Notification email envoyée à {GMAIL_ADDRESS}")
+        log(f"Notification email envoyee a {GMAIL_ADDRESS}")
     except Exception as e:
-        log(f"⚠️ Email notif : {str(e)[:60]}")
+        log(f"Email notif : {str(e)[:60]}")
 
 def attendre_ok(timeout_min=120):
-    """Attend l'approbation via pending_post.json (mis à jour par le dashboard web)."""
     deadline = time.time() + timeout_min * 60
-    log(f"⏳ En attente de votre approbation sur le dashboard (timeout {timeout_min}min)...")
+    log(f"En attente de votre approbation sur le dashboard (timeout {timeout_min}min)...")
     while time.time() < deadline:
         try:
             if PENDING_POST.exists():
                 data = json.loads(PENDING_POST.read_text(encoding="utf-8"))
                 if data.get("status") == "approved":
-                    log("✅ Approbation reçue via dashboard — publication en cours...")
+                    log("Approbation recue via dashboard — publication en cours...")
                     return True
                 if data.get("status") == "rejected":
-                    log("🚫 Post rejeté via dashboard")
+                    log("Post rejete via dashboard")
                     return False
         except Exception:
             pass
         time.sleep(30)
-    log("❌ Aucune réponse après 2h — post annulé")
+    log("Aucune reponse apres 2h — post annule")
     return False
 
 # ============================================================
@@ -331,7 +313,7 @@ class LinkedInAgent:
         path = f"debug/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{name}.png"
         try:
             await page.screenshot(path=path, full_page=True)
-            log(f"📸 {path}")
+            log(f"Screenshot : {path}")
         except Exception:
             pass
 
@@ -341,54 +323,74 @@ class LinkedInAgent:
             await asyncio.sleep(0.5)
             await el.click(force=True)
         except Exception as e:
-            log(f"⚠️ safe_click : {e}")
+            log(f"safe_click : {e}")
 
     async def launch(self, p):
-        log("🚀 Lancement navigateur")
-        # Supprimer tous les verrous Chrome (évite TargetClosedError)
+        log("Lancement navigateur")
         for lock_file in ["LOCK", "SingletonLock", "SingletonCookie", "lockfile"]:
             lp = Path(PROFILE_PATH) / lock_file
             if lp.exists():
                 try:
                     lp.unlink()
-                    log(f"🔓 Verrou supprimé : {lock_file}")
+                    log(f"Verrou supprime : {lock_file}")
                 except Exception:
                     pass
+
+        args = ["--start-maximized", "--no-sandbox"]
+        if HEADLESS:
+            args.append("--disable-dev-shm-usage")
+
+        Path(PROFILE_PATH).mkdir(parents=True, exist_ok=True)
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_PATH,
-            channel="chrome",
             headless=HEADLESS,
             viewport={"width": 1400, "height": 900},
-            args=["--start-maximized", "--no-sandbox"]
+            args=args
         )
         page = browser.pages[0] if browser.pages else await browser.new_page()
         return browser, page
 
+    async def auto_login(self, page):
+        if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
+            log("Session invalide — ajoutez LinkedIn Email/Password dans le Setup")
+            return False
+        log("Connexion automatique LinkedIn...")
+        try:
+            await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(2)
+            await page.fill("#username", LINKEDIN_EMAIL)
+            await asyncio.sleep(0.5)
+            await page.fill("#password", LINKEDIN_PASSWORD)
+            await asyncio.sleep(0.5)
+            await page.click("button[type='submit']")
+            await asyncio.sleep(5)
+            if "feed" in page.url or ("login" not in page.url and "authwall" not in page.url):
+                log("Connexion LinkedIn reussie")
+                return True
+            log("Echec connexion LinkedIn")
+            return False
+        except Exception as e:
+            log(f"Erreur login : {e}")
+            return False
+
     async def check_session(self, page):
-        log("🔐 Session check")
+        log("Session check")
         await page.goto("https://www.linkedin.com/feed/",
                         wait_until="domcontentloaded", timeout=60000)
         await asyncio.sleep(6)
         url = page.url
         if "login" in url or "authwall" in url or "checkpoint" in url:
-            log("❌ Session invalide — lancez login_once.py")
-            return False
-        log("✅ Session OK")
+            return await self.auto_login(page)
+        log("Session OK")
         return True
 
     async def wait_for_feed(self, page):
-        """
-        Attente robuste du feed LinkedIn — remplace wait_for_selector('div[role=main]')
-        qui timeout souvent. On attend plusieurs signaux alternatifs.
-        """
-        log("⏳ Attente chargement feed LinkedIn...")
-        # Attendre que l'URL soit bien /feed/
+        log("Attente chargement feed LinkedIn...")
         for _ in range(20):
             if "/feed" in page.url:
                 break
             await asyncio.sleep(1)
 
-        # Essayer plusieurs sélecteurs dans l'ordre
         selectors_feed = [
             ".share-box-feed-entry__trigger",
             "[aria-label='Commencer un post']",
@@ -401,24 +403,20 @@ class LinkedInAgent:
         for sel in selectors_feed:
             try:
                 await page.wait_for_selector(sel, timeout=8000)
-                log(f"✅ Feed détecté via : {sel}")
+                log(f"Feed detecte via : {sel}")
                 return True
             except Exception:
                 pass
 
-        # Dernier recours : attendre simplement que la page soit stable
         await asyncio.sleep(5)
-        log("⚠️ Feed chargé par timeout — on continue")
+        log("Feed charge par timeout — on continue")
         return True
 
     async def open_post_modal(self, page):
-        log("🔍 Ouverture popup création de post...")
-
-        # Attente robuste du feed
+        log("Ouverture popup creation de post...")
         await self.wait_for_feed(page)
         await asyncio.sleep(3)
 
-        # Sélecteurs du bouton "Commencer un post"
         selectors = [
             "[aria-label='Commencer un post']",
             "[aria-label='Start a post']",
@@ -434,12 +432,11 @@ class LinkedInAgent:
                     await self.safe_click(loc)
                     await asyncio.sleep(3)
                     if await page.locator("div[role='textbox']").count() > 0:
-                        log("✅ Popup ouverte")
+                        log("Popup ouverte")
                         return True
             except Exception:
                 pass
 
-        # Fallback JS élargi
         try:
             clicked = await page.evaluate("""
                 () => {
@@ -459,24 +456,23 @@ class LinkedInAgent:
                 }
             """)
             if clicked:
-                log(f"✅ Bouton trouvé via JS : '{clicked}'")
+                log(f"Bouton trouve via JS : '{clicked}'")
                 await asyncio.sleep(3)
                 if await page.locator("div[role='textbox']").count() > 0:
-                    log("✅ Popup ouverte via JS")
+                    log("Popup ouverte via JS")
                     return True
         except Exception as e:
-            log(f"  ⚠️ JS fallback : {e}")
+            log(f"JS fallback : {e}")
 
         await self.debug(page, "modal_fail")
         return False
 
     async def upload_image(self, page, image_path):
         if not image_path or not Path(image_path).exists():
-            log("⚠️ Pas d'image à uploader")
+            log("Pas d'image a uploader")
             return False
 
-        log(f"🖼️ Upload image : {Path(image_path).name}")
-
+        log(f"Upload image : {Path(image_path).name}")
         photo_selectors = [
             "button[aria-label*='Photo']",
             "button[aria-label*='photo']",
@@ -500,18 +496,17 @@ class LinkedInAgent:
             file_input = page.locator("input[type='file']").first
             await file_input.wait_for(state="attached", timeout=10000)
             await file_input.set_input_files(image_path)
-            log("✅ Image uploadée")
+            log("Image uploadee")
             await asyncio.sleep(5)
             return True
         except Exception as e:
-            log(f"⚠️ Upload image erreur : {e}")
+            log(f"Upload image erreur : {e}")
             return False
 
     async def tagger_fredy(self, page, editor):
         try:
-            log(f"🏷️ Tentative de tag {TAG_NOM}...")
+            log(f"Tentative de tag {TAG_NOM}...")
             await asyncio.sleep(2)
-
             suggestion_selectors = [
                 "[data-view-name='type-ahead-result']",
                 ".type-ahead-result",
@@ -529,70 +524,18 @@ class LinkedInAgent:
                         txt = (await s.inner_text()).strip()
                         if "Fredy" in txt or "Beukam" in txt:
                             await s.click()
-                            log(f"✅ Tag {TAG_NOM} appliqué")
+                            log(f"Tag {TAG_NOM} applique")
                             return True
                 except Exception:
                     pass
-
-            log(f"  ℹ️ Tag en texte brut — acceptable")
+            log("Tag en texte brut — acceptable")
             return True
-
         except Exception as e:
-            log(f"⚠️ Tag erreur : {e}")
+            log(f"Tag erreur : {e}")
             return False
 
-    async def find_publish_button(self, page):
-        all_labels = ["Publier", "Post", "Publish"]
-        exclude    = ["republier", "repost", "commenter", "annuler",
-                      "cancel", "retour", "back", "programmer", "schedule"]
-
-        for label in all_labels:
-            for sel in [
-                f"button[aria-label='{label}']",
-                f"button[aria-label*='{label}']",
-            ]:
-                try:
-                    btn = page.locator(sel).first
-                    if await btn.count() > 0 and await btn.is_visible():
-                        log(f"✅ Bouton publier : '{label}'")
-                        return btn
-                except Exception:
-                    pass
-
-        buttons = page.locator("button")
-        count   = await buttons.count()
-        for i in range(count):
-            try:
-                b = buttons.nth(i)
-                if not await b.is_visible():
-                    continue
-                txt     = (await b.inner_text()).strip()
-                txt_low = txt.lower()
-                if any(ex in txt_low for ex in exclude):
-                    continue
-                if txt in all_labels or txt_low in [l.lower() for l in all_labels]:
-                    log(f"✅ Bouton publier (texte) : '{txt}'")
-                    return b
-            except Exception:
-                pass
-
-        for sel in [
-            ".share-actions__primary-action",
-            "button.artdeco-button--primary",
-        ]:
-            try:
-                btn = page.locator(sel).first
-                if await btn.count() > 0 and await btn.is_visible():
-                    txt = (await btn.inner_text()).strip()
-                    log(f"✅ Bouton publier (primary) : '{txt}'")
-                    return btn
-            except Exception:
-                pass
-
-        return None
-
     async def create_post(self, page, post_text, image_path):
-        log("📝 Chargement feed")
+        log("Chargement feed")
         await page.goto("https://www.linkedin.com/feed/",
                         wait_until="domcontentloaded", timeout=60000)
 
@@ -603,7 +546,7 @@ class LinkedInAgent:
 
         await self.debug(page, "modal_opened")
 
-        log("🧠 Attente éditeur...")
+        log("Attente editeur...")
         await page.wait_for_selector("div[role='textbox']", timeout=20000)
         editor = page.locator("div[role='textbox']").first
         await editor.click()
@@ -623,15 +566,11 @@ class LinkedInAgent:
             await editor.type("\n")
             await asyncio.sleep(0.1)
 
-        log("✏️ Texte inséré")
+        log("Texte insere")
         await self.debug(page, "text_typed")
 
         if image_path:
             await self.upload_image(page, image_path)
-
-        # ── Boucle Suivant → Publier (max 6 étapes) ──────────────────
-        # LinkedIn affiche : [Éditeur image → Suivant] → [Aperçu → Publier]
-        # On détecte et clique le bon bouton à chaque étape.
 
         PUBLISH_LABELS = ["publier", "publish", "post"]
         NEXT_LABELS    = ["suivant", "next"]
@@ -639,12 +578,6 @@ class LinkedInAgent:
                           "cancel", "retour", "back", "programmer", "schedule"]
 
         async def cliquer_bouton_bleu_principal():
-            """
-            Cherche le bouton primaire (bleu) visible dans le modal.
-            Priorité : aria-label → texte exact → classe artdeco primary.
-            Retourne (bouton_trouvé, label_cliqué) ou (False, None).
-            """
-            # 1. aria-label direct
             for label in ["Suivant", "Next", "Publier", "Publish", "Post"]:
                 for sel in [f"button[aria-label='{label}']",
                             f"button[aria-label*='{label}']"]:
@@ -655,10 +588,8 @@ class LinkedInAgent:
                     except Exception:
                         pass
 
-            # 2. Texte du bouton
             buttons = page.locator("button")
             count   = await buttons.count()
-            # Passe 1 : chercher "Publier"
             for i in range(count):
                 try:
                     b = buttons.nth(i)
@@ -671,7 +602,6 @@ class LinkedInAgent:
                         return b, t
                 except Exception:
                     pass
-            # Passe 2 : chercher "Suivant"
             for i in range(count):
                 try:
                     b = buttons.nth(i)
@@ -685,9 +615,7 @@ class LinkedInAgent:
                 except Exception:
                     pass
 
-            # 3. Bouton primary bleu (dernier recours)
-            for sel in ["button.artdeco-button--primary",
-                        ".share-actions__primary-action"]:
+            for sel in ["button.artdeco-button--primary", ".share-actions__primary-action"]:
                 try:
                     b = page.locator(sel).last
                     if await b.count() > 0 and await b.is_visible():
@@ -706,10 +634,10 @@ class LinkedInAgent:
 
             btn, label = await cliquer_bouton_bleu_principal()
             if not btn:
-                log(f"  ℹ️ Aucun bouton trouvé étape {etape} — arrêt")
+                log(f"Aucun bouton trouve etape {etape} — arret")
                 break
 
-            log(f"🖱️ Clic '{label}' (étape {etape})")
+            log(f"Clic '{label}' (etape {etape})")
             await self.safe_click(btn)
 
             if label and label.lower() in PUBLISH_LABELS:
@@ -717,14 +645,12 @@ class LinkedInAgent:
                 publie = True
                 break
 
-            # C'était "Suivant" → on continue la boucle
-
         if not publie:
             await self.debug(page, "publish_not_found")
-            raise Exception("Bouton Publier introuvable après toutes les étapes")
+            raise Exception("Bouton Publier introuvable apres toutes les etapes")
 
         await self.debug(page, "posted")
-        log("🎉 POST PUBLIÉ !")
+        log("POST PUBLIE !")
 
     async def run(self, post_text, image_path):
         async with async_playwright() as p:
@@ -736,11 +662,11 @@ class LinkedInAgent:
                 await self.create_post(page, post_text, image_path)
                 return True
             except Exception as e:
-                log(f"❌ ERREUR : {e}")
+                log(f"ERREUR : {e}")
                 await self.debug(page, "fatal")
                 return False
             finally:
-                log("🔚 Fermeture")
+                log("Fermeture")
                 await asyncio.sleep(3)
                 await browser.close()
 
@@ -749,35 +675,34 @@ class LinkedInAgent:
 # ============================================================
 
 def sauvegarder_post(post_text, image_path, succes):
-    Path("posts_publies").mkdir(parents=True, exist_ok=True)
+    posts_dir = Path(PROFILE_PATH) / "posts_publies"
+    posts_dir.mkdir(parents=True, exist_ok=True)
     date   = datetime.now().strftime("%Y%m%d_%H%M%S")
     statut = "OK" if succes else "ECHEC"
-    path   = f"posts_publies/{date}_{statut}.txt"
+    path   = posts_dir / f"{date}_{statut}.txt"
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"Date   : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
         f.write(f"Statut : {statut}\n")
         f.write(f"Image  : {image_path or 'Aucune'}\n")
         f.write("-" * 44 + "\n\n")
         f.write(post_text)
-    log(f"💾 Post sauvegardé : {path}")
+    log(f"Post sauvegarde : {path}")
 
 # ============================================================
 # MAIN
 # ============================================================
 
 if __name__ == "__main__":
-    log("🚀 LinkedIn Agent démarré")
+    log("LinkedIn Agent demarre")
     print()
 
     theme_fr, theme_en = random.choice(THEMES)
-    log(f"🎯 Thème : {theme_fr[:70]}...")
+    log(f"Theme : {theme_fr[:70]}...")
     print()
 
-    # 1. Image adaptée au thème (jamais la même deux fois)
     image_path = choisir_photo(theme_fr, theme_en)
 
-    # 2. Texte du post
-    log("🤖 Génération contenu GPT-4o...")
+    log("Generation contenu GPT-4o...")
     try:
         post_text = generer_post(theme_fr)
         print()
@@ -786,44 +711,35 @@ if __name__ == "__main__":
         print("─" * 55)
         print()
     except Exception as e:
-        log(f"❌ Erreur génération : {e}")
+        log(f"Erreur generation : {e}")
         post_text = (
-            "Sur un chantier, le planning n'est jamais figé. 🏗️\n"
-            "Ce qui fait la différence, c'est la capacité à recalibrer "
-            "rapidement quand un sous-traitant accuse du retard ou qu'un "
-            "aléa géotechnique surgit sans prévenir.\n"
-            "La rigueur documentaire — rapports quotidiens, suivi des "
-            "ressources, mise à jour du chemin critique — c'est ce qui "
-            "permet de ne jamais perdre le contrôle.\n\n"
-            "#Construction #GestionDeProjet #GénieCivil #Ottawa #Chantier\n\n"
+            "Sur un chantier, le planning n'est jamais fige.\n"
+            "Ce qui fait la difference, c'est la capacite a recalibrer "
+            "rapidement quand un sous-traitant accuse du retard.\n\n"
+            "#Construction #GestionDeProjet #GenieCivil #Ottawa #Chantier\n\n"
             "@Fredy Beukam"
         )
-        log("⚠️ Utilisation du texte par défaut")
+        log("Utilisation du texte par defaut")
 
-    # 3. Envoyer pour approbation (dashboard web + notif email)
-    import json as _json
     try:
         envoyer_approbation(post_text, image_path, theme_fr)
     except Exception as e:
-        log(f"❌ Impossible d'envoyer l'approbation : {e}")
+        log(f"Impossible d'envoyer l'approbation : {e}")
         sauvegarder_post(post_text, image_path, False)
         exit()
 
-    # 4. Attendre le OK via dashboard (2h max)
     approuve = attendre_ok(timeout_min=120)
     if not approuve:
         sauvegarder_post(post_text, image_path, False)
         exit()
 
-    # 5. Publier sur LinkedIn
     agent  = LinkedInAgent()
     succes = asyncio.run(agent.run(post_text, image_path))
 
-    # 6. Sauvegarder
     sauvegarder_post(post_text, image_path, succes)
 
     print()
     if succes:
-        log("✅ LinkedIn Agent terminé avec succès !")
+        log("LinkedIn Agent termine avec succes !")
     else:
-        log("❌ LinkedIn Agent terminé avec erreur")
+        log("LinkedIn Agent termine avec erreur")

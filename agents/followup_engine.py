@@ -21,6 +21,11 @@ GMAIL_ADDRESS  = os.getenv("GMAIL_ADDRESS")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 CV_PATH        = os.getenv("CV_PATH", "cv.pdf")
 
+USER_NAME      = os.getenv("USER_NAME", "Candidat")
+USER_EMAIL_ENV = os.getenv("USER_EMAIL", os.getenv("GMAIL_ADDRESS", ""))
+USER_PHONE     = os.getenv("USER_PHONE", "")
+USER_ADDR      = os.getenv("USER_ADDRESS", "Ottawa, Ontario")
+
 CSV_PRINCIPAL  = os.path.join(os.getenv("PROFILE_PATH", "."), "suivi_candidatures.csv")
 CSV_RELANCES   = os.path.join(os.getenv("PROFILE_PATH", "."), "suivi_relances.csv")
 
@@ -270,12 +275,12 @@ def generer_lettre_relance(entreprise, poste, date_candidature):
     date_cand_str = date_candidature.strftime("%d %B %Y")
 
     entete = (
-        "Patrice Arnold Sob Feukam\n"
-        "Vanier, Ottawa, Ontario\n"
-        "Tél : 514-236-4628 | Email : sobpatrice@yahoo.fr\n\n"
-        f"{date_str}\n\n"
-        f"Objet : Relance — Candidature pour le poste de {poste} chez {entreprise}\n\n"
-        "Madame, Monsieur,\n\n"
+        USER_NAME + "\n"
+        + USER_ADDR + "\n"
+        + "Tél : " + USER_PHONE + " | Email : " + USER_EMAIL_ENV + "\n\n"
+        + f"{date_str}\n\n"
+        + f"Objet : Relance — Candidature pour le poste de {poste} chez {entreprise}\n\n"
+        + "Madame, Monsieur,\n\n"
     )
 
     prompt = (
@@ -316,9 +321,9 @@ def generer_lettre_relance(entreprise, poste, date_candidature):
 
     signature = (
         "\n\nCordialement,\n\n"
-        "Patrice Arnold Sob Feukam\n"
-        "514-236-4628 | sobpatrice@yahoo.fr\n"
-        "Ottawa, Ontario"
+        + USER_NAME + "\n"
+        + USER_PHONE + " | " + USER_EMAIL_ENV + "\n"
+        + USER_ADDR
     )
     return entete + corps + signature
 
@@ -348,8 +353,9 @@ def envoyer_relance(entreprise, poste, lien, lettre):
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(f.read())
             encoders.encode_base64(part)
+            safe_name = re.sub(r'[^a-zA-Z_]', '_', USER_NAME.replace(' ', '_'))
             part.add_header("Content-Disposition",
-                'attachment; filename="CV_Patrice_Arnold_Sob_Feukam.pdf"')
+                f'attachment; filename="CV_{safe_name}.pdf"')
             msg.attach(part)
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:

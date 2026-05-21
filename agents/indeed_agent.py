@@ -6,7 +6,7 @@ load_dotenv()
 from openai import OpenAI
 from pypdf import PdfReader
 from playwright.async_api import async_playwright
-import asyncio, random, os, csv, smtplib, re
+import asyncio, random, os, csv, smtplib, re, requests as _req
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -19,21 +19,35 @@ CV_PATH        = os.getenv("CV_PATH", "cv.pdf")
 GMAIL_ADDRESS  = os.getenv("GMAIL_ADDRESS")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 EMAIL_NOTIF    = os.getenv("GMAIL_ADDRESS")
-OUTPUT_DIR     = "candidatures_envoyees"
-SEUIL_SCORE    = 65
+
+USER_NAME         = os.getenv("USER_NAME", "Candidat")
+USER_EMAIL_ENV    = os.getenv("USER_EMAIL", os.getenv("GMAIL_ADDRESS", ""))
+USER_PHONE        = os.getenv("USER_PHONE", "")
+USER_ADDR         = os.getenv("USER_ADDRESS", "Ottawa, Ontario")
+USER_PROFESSION   = os.getenv("USER_PROFESSION", "professionnel")
+LINKEDIN_EMAIL    = os.getenv("LINKEDIN_EMAIL", "")
+LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD", "")
+HEADLESS          = os.getenv("DISPLAY", "") == ""
+
+_parts  = USER_NAME.split()
+_prenom = " ".join(_parts[:-1]) if len(_parts) > 1 else USER_NAME
+_nom    = _parts[-1] if len(_parts) > 1 else ""
+_ville  = USER_ADDR.split(",")[0].strip() if "," in USER_ADDR else USER_ADDR
+
+OUTPUT_DIR  = os.path.join(os.getenv("PROFILE_PATH", "."), "candidatures_envoyees")
+SEUIL_SCORE = 65
 
 CANDIDAT = {
-    "prenom":      "Patrice Arnold",
-    "nom":         "Sob Feukam",
-    "nom_complet": "Patrice Arnold Sob Feukam",
-    "email":       "sobpatrice@yahoo.fr",
-    "telephone":   "514-236-4628",
-    "ville":       "Ottawa",
+    "prenom":      _prenom,
+    "nom":         _nom,
+    "nom_complet": USER_NAME,
+    "email":       USER_EMAIL_ENV,
+    "telephone":   USER_PHONE,
+    "ville":       _ville,
     "province":    "Ontario",
-    "linkedin":    "linkedin.com/in/patrice-arnold-sob-feukam",
 }
 
-KEYWORDS = [
+KEYWORDS = [k.strip() for k in os.getenv("USER_KEYWORDS", "").split(",") if k.strip()] or [
     "chargé de projets construction",
     "gestionnaire projets génie civil",
     "coordinateur de chantier",
@@ -104,19 +118,19 @@ def scorer_offre(cv_texte, titre, description):
 def generer_lettre(cv_texte, titre, company, description=""):
     date_str = datetime.now().strftime("%d %B %Y")
     entete = (
-        "Patrice Arnold Sob Feukam\n"
-        "Vanier, Ottawa, Ontario\n"
-        "Tel : 514-236-4628 | Email : sobpatrice@yahoo.fr\n\n"
+        USER_NAME + "\n"
+        + USER_ADDR + "\n"
+        + "Tel : " + USER_PHONE + " | Email : " + USER_EMAIL_ENV + "\n\n"
         + date_str + "\n\n"
-        "Objet : Candidature - " + titre + " chez " + company + "\n\n"
-        "Madame, Monsieur,\n\n"
+        + "Objet : Candidature - " + titre + " chez " + company + "\n\n"
+        + "Madame, Monsieur,\n\n"
     )
     prompt = (
         "Redige UNIQUEMENT les 3 paragraphes du corps en francais. INTERDICTION de crochets [X].\n"
         "P1 : interet pour " + titre + " chez " + company + "\n"
-        "P2 : 2 realisations chiffrees chez SPA Construction SARL Cameroun\n"
+        "P2 : 2 realisations chiffrees lies a " + USER_PROFESSION + "\n"
         "P3 : disponibilite + appel a action\n"
-        "Profil : 8 ans SPA Construction 2018-2024, AutoCAD Revit Civil 3D MS Project, DECOA La Cite Ottawa.\n"
+        "Profil : " + cv_texte[:500] + "\n"
         "Poste : " + titre + " chez " + company
     )
     resp = client.chat.completions.create(
@@ -126,7 +140,8 @@ def generer_lettre(cv_texte, titre, company, description=""):
     )
     corps = resp.choices[0].message.content.strip()
     corps = "\n".join([l for l in corps.split("\n") if not re.search(r"\[.+?\]", l)])
-    return entete + corps + "\n\nCordialement,\n\nPatrice Arnold Sob Feukam\n514-236-4628 | sobpatrice@yahoo.fr\nOttawa, Ontario"
+    return (entete + corps + "\n\nCordialement,\n\n"
+            + USER_NAME + "\n" + USER_PHONE + " | " + USER_EMAIL_ENV + "\n" + USER_ADDR)
 
 def trouver_email_rh(company):
     company_lower = company.lower()
@@ -161,7 +176,8 @@ def envoyer_email(offre, lettre, email_dest):
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(f.read())
             encoders.encode_base64(part)
-            part.add_header("Content-Disposition", "attachment; filename=\"CV_Patrice_Arnold_Sob_Feukam.pdf\"")
+            safe_name = re.sub(r'[^a-zA-Z_]', '_', USER_NAME.replace(' ', '_'))
+            part.add_header("Content-Disposition", f"attachment; filename=\"CV_{safe_name}.pdf\"")
             msg.attach(part)
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
@@ -199,18 +215,36 @@ def sauvegarder_suivi(offre, statut):
     except Exception as e:
         log(f"  CSV erreur : {str(e)[:50]}")
 
+def sauvegarder_saas(offre, statut):
+    api_url = os.getenv("SAAS_API_URL", "")
+    token   = os.getenv("SAAS_USER_TOKEN", "")
+    if not api_url or not token:
+        return
+    if not api_url.startswith("http"):
+        api_url = "https://" + api_url
+    try:
+        _req.post(
+            f"{api_url}/api/candidature",
+            json={
+                "date":       datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "entreprise": offre.get("company", ""),
+                "poste":      offre.get("titre", ""),
+                "lien":       offre.get("lien", ""),
+                "plateforme": offre.get("plateforme", "Indeed"),
+                "score":      str(offre.get("score", 0)),
+                "statut":     statut,
+            },
+            headers={"X-User-Token": token},
+            timeout=5
+        )
+    except Exception:
+        pass
+
 async def postuler_offre(page, offre, lettre):
-    """
-    Stratégie 100% automatique :
-    1. Postuler sur le site Indeed/externe
-    2. Email direct RH si formulaire non soumis
-    3. Email suivi interne en dernier recours
-    """
     lien    = offre.get("lien", "")
     company = offre.get("company", "")
 
     if not lien:
-        # Pas de lien — email direct RH
         email_rh = trouver_email_rh(company) or construire_email_auto(company)
         if email_rh:
             ok = envoyer_email(offre, lettre, email_rh)
@@ -224,7 +258,6 @@ async def postuler_offre(page, offre, lettre):
         await page.goto(lien, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(3)
 
-        # Remplir champs communs
         champs = [
             (["input[name*='firstName']","input[id*='first']","input[placeholder*='First']"], CANDIDAT["prenom"]),
             (["input[name*='lastName']","input[id*='last']","input[placeholder*='Last']"], CANDIDAT["nom"]),
@@ -243,7 +276,6 @@ async def postuler_offre(page, offre, lettre):
                 except Exception:
                     pass
 
-        # Upload CV
         try:
             fi = page.locator("input[type='file']").first
             if await fi.count() > 0 and Path(CV_PATH).exists():
@@ -253,7 +285,6 @@ async def postuler_offre(page, offre, lettre):
         except Exception:
             pass
 
-        # Lettre motivation
         for sel in ["textarea[name*='cover']","textarea[name*='lettre']","textarea"]:
             try:
                 ta = page.locator(sel).first
@@ -263,7 +294,6 @@ async def postuler_offre(page, offre, lettre):
             except Exception:
                 pass
 
-        # Soumettre
         labels_submit = ["soumettre","submit","envoyer","postuler","apply now","send"]
         labels_next   = ["suivant","next","continuer"]
         labels_excl   = ["annuler","cancel","retour","back"]
@@ -307,7 +337,6 @@ async def postuler_offre(page, offre, lettre):
     except Exception as e:
         log(f"  Erreur formulaire : {str(e)[:60]}")
 
-    # Formulaire non soumis — email direct RH
     email_rh = trouver_email_rh(company) or construire_email_auto(company)
     if email_rh:
         ok = envoyer_email(offre, lettre, email_rh)
@@ -332,22 +361,19 @@ async def run():
     log(f"CV charge ({len(cv_texte)} car)")
 
     all_offres = []
+    _args = ["--no-sandbox", "--disable-dev-shm-usage"] if HEADLESS else []
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"]
-        )
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
 
-        # SCRAPING INDEED
         log("PHASE 1 - Scraping Indeed")
         for kw in KEYWORDS:
             log(f"  -> {kw}")
-            url = f"https://ca.indeed.com/jobs?q={kw.replace(' ', '+')}&l=Ottawa%2C+ON&fromage=7"
+            url = f"https://ca.indeed.com/jobs?q={kw.replace(' ', '+')}&l={_ville.replace(' ', '+')}%2C+ON&fromage=7"
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 await asyncio.sleep(random.randint(2000, 3500) / 1000)
@@ -361,8 +387,7 @@ async def run():
                         if titre_el and company_el:
                             titre   = (await titre_el.inner_text()).strip()
                             company = (await company_el.inner_text()).strip()
-                            lien    = ""
-                            desc    = ""
+                            lien, desc = "", ""
                             if lien_el:
                                 href = await lien_el.get_attribute("href")
                                 lien = f"https://ca.indeed.com{href}" if href and href.startswith("/") else href or ""
@@ -377,11 +402,10 @@ async def run():
                 log(f"    Erreur : {str(e)[:60]}")
             await asyncio.sleep(random.randint(1000, 2000) / 1000)
 
-        # SCRAPING JOB BANK
         log("PHASE 1b - Scraping Job Bank Canada")
         for kw in KEYWORDS[:3]:
             log(f"  -> {kw}")
-            url = f"https://www.jobbank.gc.ca/jobsearch/jobsearch?searchstring={kw.replace(' ', '+')}&locationstring=Ottawa%2C+ON"
+            url = f"https://www.jobbank.gc.ca/jobsearch/jobsearch?searchstring={kw.replace(' ', '+')}&locationstring={_ville.replace(' ', '+')}%2C+ON"
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 await asyncio.sleep(2)
@@ -407,7 +431,6 @@ async def run():
 
         await browser.close()
 
-    # DÉDOUBLONNAGE
     vus, uniques = set(), []
     for o in all_offres:
         key = o["titre"][:18].lower() + o["company"][:8].lower()
@@ -416,7 +439,6 @@ async def run():
             uniques.append(o)
     log(f"{len(uniques)} offres uniques")
 
-    # SCORING
     log("PHASE 2 - Scoring IA")
     retenues = []
     for i, offre in enumerate(uniques, 1):
@@ -432,18 +454,19 @@ async def run():
         log("Aucune offre retenue")
         return
 
-    # LETTRES
     log("PHASE 3 - Generation lettres")
     for offre in retenues:
         offre["lettre"] = generer_lettre(cv_texte, offre["titre"], offre["company"], offre["description"])
         log(f"  Lettre OK : {offre['company']}")
 
-    # CANDIDATURES 100% AUTOMATIQUE
     log("PHASE 4 - Candidatures 100% automatique")
     stats = {"formulaire": 0, "email_rh": 0, "email_suivi": 0}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(
+            headless=HEADLESS,
+            args=["--no-sandbox", "--disable-dev-shm-usage"] if HEADLESS else []
+        )
         context = await browser.new_context()
         page    = await context.new_page()
 
@@ -452,6 +475,7 @@ async def run():
             lettre = offre.get("lettre", "")
             statut = await postuler_offre(page, offre, lettre)
             sauvegarder_suivi(offre, statut)
+            sauvegarder_saas(offre, statut)
 
             if "soumis" in statut.lower():
                 stats["formulaire"] += 1
