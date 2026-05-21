@@ -67,7 +67,7 @@ if DATABASE_URL:
             cv_content        TEXT DEFAULT '',
             FOREIGN KEY(user_id) REFERENCES users(id)
         )""")
-        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''"]:
+        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''", "linkedin_li_at TEXT DEFAULT ''"]:
             try:
                 cur.execute(f"ALTER TABLE user_config ADD COLUMN IF NOT EXISTS {col}")
                 conn.commit()
@@ -174,7 +174,7 @@ else:
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
         """)
-        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''"]:
+        for col in ["cv_content TEXT DEFAULT ''", "linkedin_cookies TEXT DEFAULT ''", "linkedin_li_at TEXT DEFAULT ''"]:
             try:
                 conn.execute(f"ALTER TABLE user_config ADD COLUMN {col}")
             except Exception:
@@ -292,7 +292,7 @@ def get_linkedin_cookies(user_id):
 def save_config(user_id, data):
     fields = ["openai_key","gmail_address","gmail_password","nom_complet",
               "telephone","adresse","ville","province","profession","keywords",
-              "cv_path","linkedin_email","linkedin_password","cv_content"]
+              "cv_path","linkedin_email","linkedin_password","cv_content","linkedin_li_at"]
     conn = get_db()
     if DATABASE_URL:
         cur = conn.cursor()

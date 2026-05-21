@@ -22,6 +22,7 @@ EMAIL_DESTINAIRE = os.getenv("GMAIL_ADDRESS")
 PROFILE_PATH     = os.getenv("PROFILE_PATH", "chrome_profile")
 LINKEDIN_EMAIL   = os.getenv("LINKEDIN_EMAIL", "")
 LINKEDIN_PASSWORD= os.getenv("LINKEDIN_PASSWORD", "")
+LINKEDIN_LI_AT   = os.getenv("LINKEDIN_LI_AT", "")
 OUTPUT_DIR       = os.path.join(PROFILE_PATH, "candidatures_envoyees")
 SEUIL_SCORE      = 65
 HEADLESS         = os.getenv("DISPLAY", "") == ""
@@ -593,17 +594,27 @@ async def run():
             window.chrome = {runtime: {}};
         """)
         try:
-            # Charger les cookies LinkedIn sauvegardés en base
-            saved_cookies = _load_cookies()
-            if saved_cookies:
-                try:
-                    await browser.add_cookies(saved_cookies)
-                    log("Cookies LinkedIn charges depuis DB (" + str(len(saved_cookies)) + " cookies)")
-                except Exception as e:
-                    log("Cookies charges (avertissement) : " + str(e)[:50])
+            # Injecter le cookie li_at si fourni (évite tout login headless)
+            if LINKEDIN_LI_AT:
+                await browser.add_cookies([{
+                    "name": "li_at", "value": LINKEDIN_LI_AT,
+                    "domain": ".linkedin.com", "path": "/",
+                    "httpOnly": True, "secure": True, "sameSite": "None"
+                }])
+                log("Cookie li_at injecte — pas besoin de login")
+            else:
+                # Charger les cookies LinkedIn sauvegardés en base
+                saved_cookies = _load_cookies()
+                if saved_cookies:
+                    try:
+                        await browser.add_cookies(saved_cookies)
+                        log("Cookies LinkedIn charges depuis DB (" + str(len(saved_cookies)) + " cookies)")
+                    except Exception as e:
+                        log("Cookies (avertissement) : " + str(e)[:50])
 
             await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(4)
+            log("URL apres goto feed : " + page.url[:80])
             if "login" in page.url or "authwall" in page.url or "checkpoint" in page.url:
                 if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
                     log("Session expiree — configurez LinkedIn Email/Password dans le Setup")

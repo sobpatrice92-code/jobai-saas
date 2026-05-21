@@ -221,6 +221,7 @@ def run_agent(agent_id):
         "PROFILE_PATH":      cfg.get("linkedin_profile_path", str(user_profile_dir)),
         "LINKEDIN_EMAIL":    cfg.get("linkedin_email",""),
         "LINKEDIN_PASSWORD": cfg.get("linkedin_password",""),
+        "LINKEDIN_LI_AT":   cfg.get("linkedin_li_at",""),
         "SAAS_API_URL":      os.getenv("RAILWAY_PUBLIC_DOMAIN", "http://localhost:8080"),
         "SAAS_USER_TOKEN":   str(uid),
         "PYTHONUNBUFFERED":  "1",
