@@ -216,8 +216,8 @@ def sauvegarder_csv(offres):
     existe = Path(CSV_FILE).exists()
     with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=[
-            "titre", "company", "lieu", "source", "keyword", "lien", "date"
-        ])
+            "titre", "company", "lieu", "source", "keyword", "lien", "date", "score"
+        ], extrasaction="ignore")
         if not existe:
             writer.writeheader()
         writer.writerows(offres)
