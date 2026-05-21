@@ -5,12 +5,23 @@ load_dotenv()
 
 import os
 import csv
+import re
 import time
 import random
 import requests
 from datetime import datetime
 from pathlib import Path
 from bs4 import BeautifulSoup
+
+# ── OpenAI pour scoring ──────────────────────────────────────
+try:
+    from openai import OpenAI
+    from pypdf import PdfReader
+    _openai_ok = bool(os.getenv("OPENAI_API_KEY"))
+except ImportError:
+    _openai_ok = False
+
+SEUIL_SCORE = 65  # score minimum pour retenir une offre
 
 # ============================================================
 # CONFIG
@@ -144,6 +155,62 @@ def chercher_linkedin(keyword, location):
 # SAUVEGARDER EN CSV
 # ============================================================
 
+def lire_cv():
+    cv_path = os.getenv("CV_PATH", "")
+    if not cv_path or not Path(cv_path).exists():
+        return ""
+    try:
+        reader = PdfReader(cv_path)
+        return " ".join(p.extract_text() or "" for p in reader.pages)[:1500]
+    except Exception:
+        return ""
+
+def scorer_offre(client, cv_texte, offre):
+    prompt = (
+        "Evalue la compatibilite entre ce profil et cette offre d'emploi.\n"
+        "Reponds UNIQUEMENT par un entier entre 0 et 100.\n"
+        "Profil : " + cv_texte[:800] + "\n"
+        "Offre : " + offre.get("titre","") + " chez " + offre.get("company","") + "\n"
+        "Score :"
+    )
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role":"user","content":prompt}],
+            max_tokens=5
+        )
+        return int(re.search(r"\d+", resp.choices[0].message.content).group())
+    except Exception:
+        return 70
+
+def matcher_ai(offres):
+    """Score chaque offre avec GPT-4o et ne garde que celles >= SEUIL_SCORE."""
+    if not _openai_ok:
+        log("IA scoring desactive (pas de cle OpenAI) — toutes les offres conservees")
+        for o in offres:
+            o["score"] = 0
+        return offres
+
+    client   = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    cv_texte = lire_cv()
+    if not cv_texte:
+        log("CV introuvable — scoring desactive")
+        for o in offres:
+            o["score"] = 0
+        return offres
+
+    log(f"PHASE 2 - Matcher AI ({len(offres)} offres)")
+    retenues = []
+    for i, offre in enumerate(offres, 1):
+        score = scorer_offre(client, cv_texte, offre)
+        offre["score"] = score
+        statut = "OK" if score >= SEUIL_SCORE else ("~" if score >= 50 else "X")
+        log(f"  [{i}/{len(offres)}] {statut} {score}/100 {offre.get('titre','')[:45]}")
+        if score >= SEUIL_SCORE:
+            retenues.append(offre)
+    log(f"{len(retenues)} offres retenues (score >= {SEUIL_SCORE})")
+    return retenues
+
 def sauvegarder_csv(offres):
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     existe = Path(CSV_FILE).exists()
@@ -175,8 +242,8 @@ def sauvegarder_saas(offres):
                     "poste":      o.get("titre", ""),
                     "lien":       o.get("lien", ""),
                     "plateforme": o.get("source", ""),
-                    "score":      "0",
-                    "statut":     "Trouvé",
+                    "score":      str(o.get("score", 0)),
+                    "statut":     "A postuler",
                 },
                 headers={"X-User-Token": user_token},
                 timeout=5
@@ -254,16 +321,22 @@ if __name__ == "__main__":
 
     # Dédupliquer
     toutes_offres = deduplicer(toutes_offres)
-    log(f"🎯 {len(toutes_offres)} offres uniques trouvées")
+    log(f"PHASE 1 terminee : {len(toutes_offres)} offres uniques")
 
-    # Sauvegarder CSV local
-    sauvegarder_csv(toutes_offres)
-    log(f"💾 Sauvegardé : {CSV_FILE}")
+    # Scorer avec GPT-4o et filtrer
+    toutes_offres = matcher_ai(toutes_offres)
 
-    # Sauvegarder en base SaaS
-    sauvegarder_saas(toutes_offres)
+    if not toutes_offres:
+        log("Aucune offre retenue apres scoring.")
+    else:
+        # Sauvegarder CSV local
+        sauvegarder_csv(toutes_offres)
+        log(f"Sauvegarde CSV : {CSV_FILE}")
 
-    # Afficher
-    afficher(toutes_offres)
-    log("✅ Job Hunter terminé !")
-    log(f"📁 Résultats dans : {OUTPUT_DIR}/")
+        # Sauvegarder en base SaaS
+        sauvegarder_saas(toutes_offres)
+
+        # Afficher
+        afficher(toutes_offres)
+
+    log("Job Hunter termine !")
