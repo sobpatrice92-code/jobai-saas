@@ -147,7 +147,6 @@ def chercher_linkedin(keyword, location):
 def sauvegarder_csv(offres):
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     existe = Path(CSV_FILE).exists()
-
     with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=[
             "titre", "company", "lieu", "source", "keyword", "lien", "date"
@@ -155,6 +154,38 @@ def sauvegarder_csv(offres):
         if not existe:
             writer.writeheader()
         writer.writerows(offres)
+
+def sauvegarder_saas(offres):
+    """Envoie les offres à l'API SaaS pour les sauvegarder en base."""
+    api_url   = os.getenv("SAAS_API_URL", "")
+    user_token = os.getenv("SAAS_USER_TOKEN", "")
+    if not api_url or not user_token:
+        return
+    # Assurer le bon format d'URL
+    if not api_url.startswith("http"):
+        api_url = "https://" + api_url
+    ok = 0
+    for o in offres:
+        try:
+            requests.post(
+                f"{api_url}/api/candidature",
+                json={
+                    "date":       o.get("date", datetime.now().strftime("%Y-%m-%d %H:%M")),
+                    "entreprise": o.get("company", ""),
+                    "poste":      o.get("titre", ""),
+                    "lien":       o.get("lien", ""),
+                    "plateforme": o.get("source", ""),
+                    "score":      "0",
+                    "statut":     "Trouvé",
+                },
+                headers={"X-User-Token": user_token},
+                timeout=5
+            )
+            ok += 1
+        except Exception:
+            pass
+    if ok:
+        log(f"  SaaS : {ok} offres sauvegardées en base")
 
 # ============================================================
 # DÉDUPLIQUER
@@ -225,9 +256,12 @@ if __name__ == "__main__":
     toutes_offres = deduplicer(toutes_offres)
     log(f"🎯 {len(toutes_offres)} offres uniques trouvées")
 
-    # Sauvegarder
+    # Sauvegarder CSV local
     sauvegarder_csv(toutes_offres)
     log(f"💾 Sauvegardé : {CSV_FILE}")
+
+    # Sauvegarder en base SaaS
+    sauvegarder_saas(toutes_offres)
 
     # Afficher
     afficher(toutes_offres)

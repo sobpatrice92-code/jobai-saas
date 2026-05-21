@@ -192,6 +192,8 @@ def run_agent(agent_id):
         "USER_PROFESSION":   cfg.get("profession",""),
         "USER_EMAIL":        cfg.get("gmail_address",""),
         "PROFILE_PATH":      cfg.get("linkedin_profile_path", str(user_profile_dir)),
+        "SAAS_API_URL":      os.getenv("RAILWAY_PUBLIC_DOMAIN", "http://localhost:8080"),
+        "SAAS_USER_TOKEN":   str(uid),
     })
 
     try:
