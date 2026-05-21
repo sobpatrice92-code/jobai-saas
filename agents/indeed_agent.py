@@ -14,11 +14,16 @@ from email import encoders
 from datetime import datetime
 from pathlib import Path
 
-client         = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_openai_key    = os.getenv("OPENAI_API_KEY", "")
+client         = OpenAI(api_key=_openai_key) if _openai_key else None
 CV_PATH        = os.getenv("CV_PATH", "cv.pdf")
 GMAIL_ADDRESS  = os.getenv("GMAIL_ADDRESS")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 EMAIL_NOTIF    = os.getenv("GMAIL_ADDRESS")
+
+SMARTPROXY_USER = os.getenv("SMARTPROXY_USER", "")
+SMARTPROXY_PASS = os.getenv("SMARTPROXY_PASS", "")
+SAAS_USER_ID    = os.getenv("SAAS_USER_ID", "0")
 
 USER_NAME         = os.getenv("USER_NAME", "Candidat")
 USER_EMAIL_ENV    = os.getenv("USER_EMAIL", os.getenv("GMAIL_ADDRESS", ""))
@@ -364,10 +369,18 @@ async def run():
     _args = ["--no-sandbox", "--disable-dev-shm-usage"] if HEADLESS else []
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        context = await browser.new_context(
+        _launch_args = ["--no-sandbox", "--disable-dev-shm-usage"]
+        _ctx_kwargs = dict(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
         )
+        if SMARTPROXY_USER and SMARTPROXY_PASS:
+            _ctx_kwargs["proxy"] = {
+                "server":   "http://gate.smartproxy.com:10001",
+                "username": SMARTPROXY_USER + "-session-u" + SAAS_USER_ID,
+                "password": SMARTPROXY_PASS,
+            }
+        browser = await p.chromium.launch(headless=True, args=_launch_args)
+        context = await browser.new_context(**_ctx_kwargs)
         page = await context.new_page()
 
         log("PHASE 1 - Scraping Indeed")
@@ -463,11 +476,17 @@ async def run():
     stats = {"formulaire": 0, "email_rh": 0, "email_suivi": 0}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=HEADLESS,
-            args=["--no-sandbox", "--disable-dev-shm-usage"] if HEADLESS else []
-        )
-        context = await browser.new_context()
+        _apply_kwargs = dict(headless=HEADLESS,
+                             args=["--no-sandbox", "--disable-dev-shm-usage"] if HEADLESS else [])
+        _apply_ctx = {}
+        if SMARTPROXY_USER and SMARTPROXY_PASS:
+            _apply_ctx["proxy"] = {
+                "server":   "http://gate.smartproxy.com:10001",
+                "username": SMARTPROXY_USER + "-session-u" + SAAS_USER_ID,
+                "password": SMARTPROXY_PASS,
+            }
+        browser = await p.chromium.launch(**_apply_kwargs)
+        context = await browser.new_context(**_apply_ctx)
         page    = await context.new_page()
 
         for i, offre in enumerate(retenues, 1):

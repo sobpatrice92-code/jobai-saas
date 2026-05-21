@@ -19,9 +19,14 @@ from pathlib import Path
 # CONFIG
 # ============================================================
 
-client       = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_openai_key  = os.getenv("OPENAI_API_KEY", "")
+client       = OpenAI(api_key=_openai_key) if _openai_key else None
 PROFILE_PATH = os.getenv("PROFILE_PATH", "chrome_profile")
 HEADLESS     = os.getenv("DISPLAY", "") == ""
+
+SMARTPROXY_USER = os.getenv("SMARTPROXY_USER", "")
+SMARTPROXY_PASS = os.getenv("SMARTPROXY_PASS", "")
+SAAS_USER_ID    = os.getenv("SAAS_USER_ID", "0")
 
 PHOTOS_DIR       = os.getenv("PHOTOS_DIR", "photos")
 PHOTOS_UTILISEES = os.path.join(os.getenv("PHOTOS_DIR", "photos"), "photos_utilisees.txt")
@@ -341,12 +346,19 @@ class LinkedInAgent:
             args.append("--disable-dev-shm-usage")
 
         Path(PROFILE_PATH).mkdir(parents=True, exist_ok=True)
-        browser = await p.chromium.launch_persistent_context(
+        launch_kwargs = dict(
             user_data_dir=PROFILE_PATH,
             headless=HEADLESS,
             viewport={"width": 1400, "height": 900},
-            args=args
+            args=args,
         )
+        if SMARTPROXY_USER and SMARTPROXY_PASS:
+            launch_kwargs["proxy"] = {
+                "server":   "http://gate.smartproxy.com:10001",
+                "username": SMARTPROXY_USER + "-session-u" + SAAS_USER_ID,
+                "password": SMARTPROXY_PASS,
+            }
+        browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
         return browser, page
 

@@ -38,6 +38,10 @@ LINKEDIN_EMAIL   = os.getenv("LINKEDIN_EMAIL", "")
 LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD", "")
 HEADLESS         = os.getenv("DISPLAY", "") == ""
 
+SMARTPROXY_USER = os.getenv("SMARTPROXY_USER", "")
+SMARTPROXY_PASS = os.getenv("SMARTPROXY_PASS", "")
+SAAS_USER_ID    = os.getenv("SAAS_USER_ID", "0")
+
 # Fichier pending isolé par utilisateur dans le dossier uploads
 _data_dir       = Path(PROFILE_PATH).parent
 _data_dir.mkdir(parents=True, exist_ok=True)
@@ -739,12 +743,19 @@ class ProfileOptimizer:
             args.append("--disable-dev-shm-usage")
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch_persistent_context(
+            launch_kwargs = dict(
                 user_data_dir=PROFILE_PATH,
                 headless=HEADLESS,
                 viewport={"width": 1400, "height": 900},
                 args=args,
             )
+            if SMARTPROXY_USER and SMARTPROXY_PASS:
+                launch_kwargs["proxy"] = {
+                    "server":   "http://gate.smartproxy.com:10001",
+                    "username": SMARTPROXY_USER + "-session-u" + SAAS_USER_ID,
+                    "password": SMARTPROXY_PASS,
+                }
+            browser = await p.chromium.launch_persistent_context(**launch_kwargs)
             page = browser.pages[0] if browser.pages else await browser.new_page()
 
             try:
