@@ -103,11 +103,18 @@
                  value="{{ cfg.get('linkedin_password','') }}" placeholder="Votre mot de passe"/>
         </div>
         <div class="col-12 mt-2">
-          <label class="form-label small fw-bold">Cookie <code>li_at</code> <span class="text-muted fw-normal">(recommandé — évite le blocage par LinkedIn)</span></label>
-          <input type="text" name="linkedin_li_at" class="form-control"
-                 value="{{ cfg.get('linkedin_li_at','') }}"
-                 placeholder="F12 → Application → Cookies → linkedin.com → li_at"/>
-          <small class="text-muted">Sur LinkedIn.com : F12 → Application → Cookies → linkedin.com → copier la valeur de <strong>li_at</strong></small>
+          <label class="form-label small fw-bold">
+            Cookies LinkedIn <span class="badge bg-success">Recommandé</span>
+            <span class="text-muted fw-normal small"> — évite tout blocage</span>
+          </label>
+          <textarea name="linkedin_cookies_json" class="form-control" rows="3"
+            placeholder='Coller ici le JSON exporté par Cookie-Editor (extension Chrome/Firefox)'>{{ cfg.get('linkedin_cookies_json','') }}</textarea>
+          <small class="text-muted">
+            1. Installe <strong>Cookie-Editor</strong> sur Chrome &nbsp;|&nbsp;
+            2. Va sur <strong>linkedin.com</strong> (connecté) &nbsp;|&nbsp;
+            3. Clique l'icône Cookie-Editor → <strong>Export</strong> → <strong>Export as JSON</strong> → Copie &nbsp;|&nbsp;
+            4. Colle ci-dessus
+          </small>
         </div>
       </div>
     </div>

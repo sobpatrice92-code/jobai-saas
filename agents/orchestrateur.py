@@ -22,7 +22,8 @@ EMAIL_DESTINAIRE = os.getenv("GMAIL_ADDRESS")
 PROFILE_PATH     = os.getenv("PROFILE_PATH", "chrome_profile")
 LINKEDIN_EMAIL   = os.getenv("LINKEDIN_EMAIL", "")
 LINKEDIN_PASSWORD= os.getenv("LINKEDIN_PASSWORD", "")
-LINKEDIN_LI_AT   = os.getenv("LINKEDIN_LI_AT", "")
+LINKEDIN_LI_AT        = os.getenv("LINKEDIN_LI_AT", "")
+LINKEDIN_COOKIES_JSON = os.getenv("LINKEDIN_COOKIES_JSON", "")
 OUTPUT_DIR       = os.path.join(PROFILE_PATH, "candidatures_envoyees")
 SEUIL_SCORE      = 65
 HEADLESS         = os.getenv("DISPLAY", "") == ""
@@ -594,20 +595,41 @@ async def run():
             window.chrome = {runtime: {}};
         """)
         try:
-            # Injecter le cookie li_at si fourni (évite tout login headless)
-            if LINKEDIN_LI_AT:
+            # Injecter les cookies LinkedIn (JSON complet depuis Cookie-Editor)
+            if LINKEDIN_COOKIES_JSON:
+                try:
+                    raw_cookies = json.loads(LINKEDIN_COOKIES_JSON)
+                    pw_cookies = []
+                    for c in raw_cookies:
+                        # Normaliser les champs pour Playwright
+                        same_site = c.get("sameSite", "None")
+                        if same_site not in ("Strict","Lax","None"):
+                            same_site = "None"
+                        pw_c = {
+                            "name":     c.get("name",""),
+                            "value":    c.get("value",""),
+                            "domain":   c.get("domain", ".linkedin.com"),
+                            "path":     c.get("path", "/"),
+                            "secure":   bool(c.get("secure", True)),
+                            "httpOnly": bool(c.get("httpOnly", False)),
+                            "sameSite": same_site,
+                            "expires":  int(c.get("expirationDate", 2000000000)),
+                        }
+                        if pw_c["name"] and pw_c["value"]:
+                            pw_cookies.append(pw_c)
+                    await browser.add_cookies(pw_cookies)
+                    log("Cookies LinkedIn injectes : " + str(len(pw_cookies)) + " cookies")
+                except Exception as e:
+                    log("Erreur injection cookies : " + str(e)[:80])
+            elif LINKEDIN_LI_AT:
                 li_at_val = LINKEDIN_LI_AT.strip()
-                log("Cookie li_at longueur : " + str(len(li_at_val)))
-                await browser.add_cookies([
-                    {"name": "li_at", "value": li_at_val,
-                     "domain": ".linkedin.com", "path": "/",
-                     "httpOnly": True, "secure": True, "sameSite": "None",
-                     "expires": 2000000000},
-                    {"name": "JSESSIONID", "value": "ajax:" + li_at_val[:16],
-                     "domain": ".linkedin.com", "path": "/",
-                     "httpOnly": False, "secure": True, "sameSite": "None"},
-                ])
-                log("Cookie li_at injecte")
+                log("Cookie li_at seul : " + str(len(li_at_val)) + " chars")
+                await browser.add_cookies([{
+                    "name": "li_at", "value": li_at_val,
+                    "domain": ".linkedin.com", "path": "/",
+                    "httpOnly": True, "secure": True, "sameSite": "None",
+                    "expires": 2000000000
+                }])
             else:
                 # Charger les cookies LinkedIn sauvegardés en base
                 saved_cookies = _load_cookies()
