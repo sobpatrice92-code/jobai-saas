@@ -225,6 +225,9 @@ def run_agent(agent_id):
         "LINKEDIN_COOKIES_JSON": cfg.get("linkedin_cookies_json",""),
         "SAAS_API_URL":      os.getenv("RAILWAY_PUBLIC_DOMAIN", "http://localhost:8080"),
         "SAAS_USER_TOKEN":   str(uid),
+        "SAAS_USER_ID":      str(uid),
+        "SMARTPROXY_USER":   os.getenv("SMARTPROXY_USER", ""),
+        "SMARTPROXY_PASS":   os.getenv("SMARTPROXY_PASS", ""),
         "PYTHONUNBUFFERED":  "1",
         "PYTHONIOENCODING":  "utf-8",
     })
