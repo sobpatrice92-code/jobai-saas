@@ -136,6 +136,15 @@
           <input type="password" name="gmail_password" class="form-control"
                  value="{{ cfg.get('gmail_password','') }}" placeholder="xxxx xxxx xxxx xxxx"/>
         </div>
+        <div class="col-12">
+          <label class="form-label small fw-bold">
+            Email de notification <span class="text-muted fw-normal">(rappels, alertes JobAI)</span>
+          </label>
+          <input type="email" name="notif_email" class="form-control"
+                 value="{{ cfg.get('notif_email','') }}"
+                 placeholder="votre@yahoo.fr ou votre@gmail.com"/>
+          <small class="text-muted">Recevez les rappels cookies, alertes d'expiration et résumés ici.</small>
+        </div>
       </div>
     </div>
 

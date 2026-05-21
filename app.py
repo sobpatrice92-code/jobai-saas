@@ -20,17 +20,18 @@ models.init_db()
 
 def _send_cookie_reminder(uid, cfg):
     """Envoie un email de rappel pour rafraîchir les cookies LinkedIn."""
-    gmail = cfg.get("gmail_address", "")
-    pwd   = cfg.get("gmail_password", "")
-    name  = cfg.get("nom_complet", "Utilisateur")
-    if not gmail or not pwd:
+    gmail    = cfg.get("gmail_address", "")
+    pwd      = cfg.get("gmail_password", "")
+    name     = cfg.get("nom_complet", "Utilisateur")
+    dest     = cfg.get("notif_email", "").strip() or gmail  # notif_email prioritaire
+    if not gmail or not pwd or not dest:
         return
-    domain   = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+    domain    = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
     setup_url = (f"https://{domain}/setup" if domain else "/setup")
     try:
         msg = MIMEMultipart()
         msg["From"]    = gmail
-        msg["To"]      = gmail
+        msg["To"]      = dest
         msg["Subject"] = "⚠️ JobAI — Rafraîchissez vos cookies LinkedIn (expire bientôt)"
         body = f"""Bonjour {name},
 
@@ -57,8 +58,8 @@ Ce rappel est envoyé automatiquement tous les 25 jours.
         msg.attach(MIMEText(body, "plain", "utf-8"))
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(gmail, pwd)
-            server.sendmail(gmail, gmail, msg.as_string())
-        app.logger.warning(f"[cookies_reminder] Rappel envoyé à {gmail} (user {uid})")
+            server.sendmail(gmail, dest, msg.as_string())
+        app.logger.warning(f"[cookies_reminder] Rappel envoyé à {dest} (user {uid})")
     except Exception as e:
         app.logger.warning(f"[cookies_reminder] Erreur: {e}")
 
@@ -174,6 +175,7 @@ def setup():
             "gmail_password":   request.form.get("gmail_password","").strip(),
             "linkedin_email":   request.form.get("linkedin_email","").strip(),
             "linkedin_password":request.form.get("linkedin_password","").strip(),
+            "notif_email":      request.form.get("notif_email","").strip(),
             "nom_complet":      request.form.get("nom_complet","").strip(),
             "telephone":        request.form.get("telephone","").strip(),
             "adresse":          request.form.get("adresse","").strip(),
