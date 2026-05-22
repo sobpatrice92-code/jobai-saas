@@ -5,6 +5,7 @@ load_dotenv()
 from openai import OpenAI
 from pypdf import PdfReader
 from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
 import asyncio, random, os, csv, smtplib, re, json, requests as _req
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -525,10 +526,65 @@ async def postuler_externe(browser, page, offre, lettre):
         except Exception:
             return "echec"
 
+def scraper_jobs_http(kw: str, location: str) -> list:
+    """LinkedIn public guest API — aucun navigateur requis, aucun crash."""
+    proxies = None
+    if SMARTPROXY_USER and SMARTPROXY_PASS:
+        session_id = "u" + SAAS_USER_ID
+        p_url = ("http://" + SMARTPROXY_USER + "-session-" + session_id +
+                 ":" + SMARTPROXY_PASS + "@gate.smartproxy.com:10001")
+        proxies = {"http": p_url, "https": p_url}
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/124.0.0.0 Safari/537.36"),
+        "Accept-Language": "fr-CA,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "https://www.linkedin.com/jobs/",
+    }
+    offres = []
+    for start in (0, 25):
+        try:
+            resp = _req.get(
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+                params={"keywords": kw, "location": location,
+                        "f_TPR": "r604800", "start": start},
+                headers=headers, proxies=proxies, timeout=20,
+            )
+            if resp.status_code != 200:
+                log("  LinkedIn HTTP " + str(resp.status_code) + " pour " + kw[:25])
+                break
+            soup = BeautifulSoup(resp.text, "html.parser")
+            cards = soup.find_all("div", class_=lambda c: c and "base-card" in c)
+            for card in cards[:12]:
+                try:
+                    a  = card.find("a", href=lambda h: h and "/jobs/view/" in h)
+                    h3 = card.find("h3")
+                    h4 = card.find("h4")
+                    if not (a and h3):
+                        continue
+                    href = a.get("href", "")
+                    lien = ("https://www.linkedin.com" + href.split("?")[0]
+                            if href.startswith("/") else href.split("?")[0])
+                    titre   = h3.get_text(strip=True)
+                    company = h4.get_text(strip=True) if h4 else ""
+                    if titre and company and lien:
+                        offres.append({"titre": titre, "company": company,
+                                       "lien": lien, "description": ""})
+                except Exception:
+                    pass
+            if len(cards) < 10:
+                break
+        except Exception as e:
+            log("  HTTP erreur scraping : " + str(e)[:60])
+            break
+    return offres
+
+
 async def run():
     print("="*60, flush=True)
-    print("  ORCHESTRATEUR LINKEDIN v8 - TAUX DE SUCCES 100%", flush=True)
-    print("  Easy Apply v8 + Formulaire + 64 emails RH directs", flush=True)
+    print("  ORCHESTRATEUR LINKEDIN v9 - HTTP SCRAPING + EASY APPLY", flush=True)
+    print("  Phase 1 HTTP (sans navigateur) + Phase 4 Playwright", flush=True)
     print("="*60, flush=True)
     log("OpenAI : " + ("OK" if client else "MANQUANT (OPENAI_API_KEY non configuree)"))
     log("LinkedIn email : " + (LINKEDIN_EMAIL if LINKEDIN_EMAIL else "MANQUANT"))
@@ -536,18 +592,63 @@ async def run():
     if SMARTPROXY_USER and SMARTPROXY_PASS:
         log("Proxy : Smartproxy résidentiel (session u" + SAAS_USER_ID + ")")
     else:
-        log("Proxy : non configuré — SMARTPROXY_USER / SMARTPROXY_PASS manquants")
+        log("Proxy : non configuré")
     if not Path(CV_PATH).exists():
         log("CV non trouve : " + CV_PATH)
         return
     cv_texte = lire_pdf(CV_PATH)
     log("CV charge (" + str(len(cv_texte)) + " car)")
+
+    # ── PHASE 1 : Scraping HTTP (pas de navigateur, zéro crash) ────────────────
+    log("PHASE 1 - Job Hunter (HTTP, sans navigateur)")
     all_offres = []
-    retenues   = []
+    for i, kw in enumerate(KEYWORDS, 1):
+        log("  [" + str(i) + "/" + str(len(KEYWORDS)) + "] " + kw)
+        found = scraper_jobs_http(kw, LOCATION)
+        all_offres.extend(found)
+        log("    -> " + str(len(found)) + " offres")
+
+    vus, uniques = set(), []
+    for o in all_offres:
+        key = o["titre"][:18].lower() + o["company"][:8].lower()
+        if key not in vus:
+            vus.add(key)
+            uniques.append(o)
+    log(str(len(uniques)) + " offres uniques")
+
+    # ── PHASE 2 : Matcher AI ────────────────────────────────────────────────────
+    log("PHASE 2 - Matcher AI")
+    retenues = []
+    for i, offre in enumerate(uniques, 1):
+        score = scorer_offre(cv_texte, offre)
+        offre["score"] = score
+        emoji = "OK" if score >= 75 else "~" if score >= SEUIL_SCORE else "X"
+        log("  [" + str(i) + "/" + str(len(uniques)) + "] " + emoji + " " + str(score) + "/100 " + offre["titre"][:35])
+        if score >= SEUIL_SCORE:
+            retenues.append(offre)
+    log(str(len(retenues)) + " offres retenues")
+    if not retenues:
+        log("Aucune offre retenue - terminé")
+        return
+
+    # ── PHASE 3 : Lettres + Emails de confirmation ──────────────────────────────
+    log("PHASE 3 - Lettres + Emails confirmation")
+    for offre in retenues:
+        try:
+            offre["lettre"] = generer_lettre(cv_texte, offre)
+            if envoyer_email_candidature(offre, offre["lettre"]):
+                log("  Email confirmation : " + offre["company"])
+        except Exception as e:
+            log("  Erreur : " + str(e)[:50])
+            offre["lettre"] = ""
+
+    # ── PHASE 4 : Apply Bot v9 (navigateur UNIQUEMENT ici) ─────────────────────
+    log("PHASE 4 - Apply Bot v9 (Easy Apply)")
+    stats = {"easy_apply": 0, "easy_apply_cache": 0, "formulaire_soumis": 0,
+             "email_direct": 0, "email_suivi": 0, "echec": 0}
 
     async with async_playwright() as p:
         Path(PROFILE_PATH).mkdir(parents=True, exist_ok=True)
-        # Supprimer les lock files Chrome pour eviter les blocages
         for lock in ["LOCK", "SingletonLock", "SingletonCookie", "lockfile"]:
             lp = Path(PROFILE_PATH) / lock
             if lp.exists():
@@ -557,22 +658,16 @@ async def run():
                 except Exception:
                     pass
         stealth_args = [
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
+            "--no-sandbox", "--disable-dev-shm-usage",
             "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-            "--window-size=1280,720",
-            "--disable-extensions",
-            "--disable-gpu",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-default-apps",
-            "--disable-background-networking",
+            "--disable-infobars", "--window-size=1280,720",
+            "--disable-extensions", "--disable-gpu",
+            "--no-first-run", "--no-default-browser-check",
+            "--disable-default-apps", "--disable-background-networking",
             "--disable-background-timer-throttling",
             "--disable-renderer-backgrounding",
             "--disable-backgrounding-occluded-windows",
-            "--memory-pressure-off",
-            "--renderer-process-limit=1",
+            "--memory-pressure-off", "--renderer-process-limit=1",
         ]
         launch_kwargs = dict(
             user_data_dir=PROFILE_PATH,
@@ -595,7 +690,6 @@ async def run():
             }
         browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
-        # Masquer les propriétés qui trahissent Playwright/Chromium
         await page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3]});
@@ -603,19 +697,18 @@ async def run():
             window.chrome = {runtime: {}};
         """)
         try:
-            # Injecter les cookies LinkedIn (JSON complet depuis Cookie-Editor)
+            # Injection cookies LinkedIn
             if LINKEDIN_COOKIES_JSON:
                 try:
                     raw_cookies = json.loads(LINKEDIN_COOKIES_JSON)
                     pw_cookies = []
                     for c in raw_cookies:
-                        # Normaliser les champs pour Playwright
                         same_site = c.get("sameSite", "None")
-                        if same_site not in ("Strict","Lax","None"):
+                        if same_site not in ("Strict", "Lax", "None"):
                             same_site = "None"
                         pw_c = {
-                            "name":     c.get("name",""),
-                            "value":    c.get("value",""),
+                            "name":     c.get("name", ""),
+                            "value":    c.get("value", ""),
                             "domain":   c.get("domain", ".linkedin.com"),
                             "path":     c.get("path", "/"),
                             "secure":   bool(c.get("secure", True)),
@@ -636,10 +729,9 @@ async def run():
                     "name": "li_at", "value": li_at_val,
                     "domain": ".linkedin.com", "path": "/",
                     "httpOnly": True, "secure": True, "sameSite": "None",
-                    "expires": 2000000000
+                    "expires": 2000000000,
                 }])
             else:
-                # Charger les cookies LinkedIn sauvegardés en base
                 saved_cookies = _load_cookies()
                 if saved_cookies:
                     try:
@@ -648,6 +740,7 @@ async def run():
                     except Exception as e:
                         log("Cookies (avertissement) : " + str(e)[:50])
 
+            # Vérifier la session LinkedIn
             await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(4)
             log("URL apres goto feed : " + page.url[:80])
@@ -658,14 +751,10 @@ async def run():
                 log("Connexion LinkedIn...")
                 await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
                 await asyncio.sleep(3)
-                log("URL login : " + page.url[:80])
-                # Attendre le champ email avec timeout court pour diagnostiquer
                 try:
                     await page.wait_for_selector("#username", timeout=15000)
                 except Exception:
                     log("Champ #username introuvable — URL : " + page.url[:80])
-                    log("LinkedIn affiche probablement un CAPTCHA ou verification")
-                    # Essayer quand même avec les sélecteurs alternatifs
                     for sel in ["input[name='session_key']", "input[type='email']", "input[autocomplete='email']"]:
                         try:
                             await page.wait_for_selector(sel, timeout=5000)
@@ -697,7 +786,6 @@ async def run():
                 log("URL apres login : " + url_now[:80])
                 if "checkpoint" in url_now:
                     log("LinkedIn demande une verification de securite")
-                    log("=> Connectez-vous manuellement sur LinkedIn depuis votre navigateur une fois pour valider")
                     return
                 if "login" in url_now or "authwall" in url_now:
                     log("Echec connexion LinkedIn — verifiez email/mot de passe dans le Setup")
@@ -712,62 +800,7 @@ async def run():
                 _save_cookies(cookies)
                 log("Cookies mis a jour en base")
 
-            log("PHASE 1 - Job Hunter")
-            for i, kw in enumerate(KEYWORDS, 1):
-                log("  [" + str(i) + "/" + str(len(KEYWORDS)) + "] " + kw)
-                url = "https://www.linkedin.com/jobs/search/?keywords=" + kw.replace(" ", "%20") + "&location=" + LOCATION.replace(" ", "%20") + "&f_TPR=r604800"
-                try:
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    await asyncio.sleep(random.randint(2000, 3500) / 1000)
-                    # Vérifier qu'on est bien sur une page LinkedIn valide
-                    cur_url = page.url
-                    if "linkedin.com/jobs" not in cur_url and "linkedin.com/feed" not in cur_url:
-                        log("    Page inattendue : " + cur_url[:60] + " — skip")
-                        continue
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await asyncio.sleep(2)
-                    extracted = await page.evaluate(JS_EXTRACT)
-                    for item in extracted:
-                        if item.get("titre") and item.get("company"):
-                            all_offres.append({"titre": item["titre"].strip(), "company": item["company"].strip(), "lien": item["lien"], "description": ""})
-                    log("    -> " + str(len(extracted)) + " offres")
-                except Exception as e:
-                    log("    Erreur : " + str(e)[:60])
-                    await asyncio.sleep(3)
-
-            vus, uniques = set(), []
-            for o in all_offres:
-                key = o["titre"][:18].lower() + o["company"][:8].lower()
-                if key not in vus:
-                    vus.add(key)
-                    uniques.append(o)
-            log(str(len(uniques)) + " offres uniques")
-
-            log("PHASE 2 - Matcher AI")
-            for i, offre in enumerate(uniques, 1):
-                score = scorer_offre(cv_texte, offre)
-                offre["score"] = score
-                emoji = "OK" if score >= 75 else "~" if score >= SEUIL_SCORE else "X"
-                log("  [" + str(i) + "/" + str(len(uniques)) + "] " + emoji + " " + str(score) + "/100 " + offre["titre"][:35])
-                if score >= SEUIL_SCORE:
-                    retenues.append(offre)
-            log(str(len(retenues)) + " offres retenues")
-            if not retenues:
-                return
-
-            log("PHASE 3 - Lettres + Emails confirmation")
-            for offre in retenues:
-                try:
-                    offre["lettre"] = generer_lettre(cv_texte, offre)
-                    if envoyer_email_candidature(offre, offre["lettre"]):
-                        log("  Email confirmation : " + offre["company"])
-                except Exception as e:
-                    log("  Erreur : " + str(e)[:50])
-                    offre["lettre"] = ""
-
-            log("PHASE 4 - Apply Bot v8 (100%)")
-            stats = {"easy_apply": 0, "easy_apply_cache": 0, "formulaire_soumis": 0, "email_direct": 0, "email_suivi": 0, "echec": 0}
-
+            # Postuler à chaque offre retenue
             for i, offre in enumerate(retenues, 1):
                 log("[" + str(i) + "/" + str(len(retenues)) + "] " + offre["company"] + " - " + offre["titre"][:35])
                 lien   = offre.get("lien", "")
@@ -775,7 +808,6 @@ async def run():
                 if not lien:
                     stats["echec"] += 1
                     continue
-
                 try:
                     await page.goto(lien, wait_until="domcontentloaded", timeout=30000)
                     await asyncio.sleep(random.randint(3000, 5000) / 1000)
@@ -789,7 +821,6 @@ async def run():
                     log("  Type : " + str(type_cand))
 
                     if type_cand == "easy_apply":
-                        # Easy Apply v8 — navigation intelligente
                         clique = await page.evaluate(JS_POSTULER)
                         if clique:
                             log("  Clique : " + str(clique))
@@ -869,7 +900,6 @@ async def run():
                             stats["echec"] += 1
 
                     else:
-                        # Aucun bouton Easy Apply ni lien Postuler — fallback email RH direct
                         email_rh = trouver_email_rh(offre.get("company", ""))
                         if email_rh and lettre:
                             envoyer_email_candidature(offre, lettre, email_dest=email_rh)
@@ -905,7 +935,7 @@ async def run():
 
     print()
     print("="*60)
-    print("  RESULTATS ORCHESTRATEUR v8")
+    print("  RESULTATS ORCHESTRATEUR v9")
     print("  Easy Apply natif  : " + str(stats.get("easy_apply", 0)))
     print("  Easy Apply cache  : " + str(stats.get("easy_apply_cache", 0)))
     print("  Formulaire soumis : " + str(stats.get("formulaire_soumis", 0)))
