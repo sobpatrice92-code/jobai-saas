@@ -526,6 +526,78 @@ def api_add_candidature():
     models.add_candidature(uid, data)
     return jsonify({"status": "ok"})
 
+@app.route("/api/agent-run/<agent_id>", methods=["POST"])
+def api_agent_run(agent_id):
+    """Endpoint sécurisé pour déclencher un agent via token secret (CLI/admin)."""
+    secret = os.getenv("AGENT_SECRET", "")
+    if not secret or request.headers.get("X-Agent-Secret","") != secret:
+        return jsonify({"error": "Non autorisé"}), 401
+    uid_str = request.headers.get("X-User-Id", "1")
+    try:
+        uid = int(uid_str)
+    except Exception:
+        return jsonify({"error": "user_id invalide"}), 400
+    if agent_id not in AGENTS:
+        return jsonify({"error": "Agent inconnu"}), 404
+    key = (uid, agent_id)
+    if key in running_procs and running_procs[key].poll() is None:
+        return jsonify({"error": "Déjà en cours"}), 400
+    cfg  = models.get_config(uid)
+    user = models.get_user(uid)
+    if not cfg or not user:
+        return jsonify({"error": "Utilisateur introuvable"}), 404
+    user_profile_dir = UPLOAD_FOLDER / str(uid) / "chrome_profile"
+    user_profile_dir.mkdir(parents=True, exist_ok=True)
+    cv_path = cfg.get("cv_path", "")
+    if cv_path and not Path(cv_path).exists():
+        cv_content = models.get_cv_content(uid)
+        if cv_content:
+            try:
+                Path(cv_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(cv_path).write_bytes(base64.b64decode(cv_content))
+            except Exception:
+                pass
+    _oai = os.getenv("OPENAI_API_KEY", "")
+    env = os.environ.copy()
+    env.update({
+        "OPENAI_API_KEY":        _oai,
+        "GMAIL_ADDRESS":         cfg.get("gmail_address",""),
+        "GMAIL_APP_PASSWORD":    cfg.get("gmail_password",""),
+        "CV_PATH":               cfg.get("cv_path",""),
+        "USER_ID":               str(uid),
+        "USER_NAME":             cfg.get("nom_complet", user.get("name","")),
+        "USER_PHONE":            cfg.get("telephone",""),
+        "USER_ADDRESS":          cfg.get("adresse","") + " " + cfg.get("ville",""),
+        "USER_KEYWORDS":         cfg.get("keywords",""),
+        "USER_PROFESSION":       cfg.get("profession",""),
+        "USER_EMAIL":            cfg.get("gmail_address",""),
+        "PROFILE_PATH":          cfg.get("linkedin_profile_path", str(user_profile_dir)),
+        "LINKEDIN_EMAIL":        cfg.get("linkedin_email",""),
+        "LINKEDIN_PASSWORD":     cfg.get("linkedin_password",""),
+        "LINKEDIN_LI_AT":        cfg.get("linkedin_li_at",""),
+        "LINKEDIN_COOKIES_JSON": cfg.get("linkedin_cookies_json",""),
+        "SAAS_API_URL":          os.getenv("RAILWAY_PUBLIC_DOMAIN", "http://localhost:8080"),
+        "SAAS_USER_TOKEN":       str(uid),
+        "SAAS_USER_ID":          str(uid),
+        "SMARTPROXY_USER":       os.getenv("SMARTPROXY_USER",""),
+        "SMARTPROXY_PASS":       os.getenv("SMARTPROXY_PASS",""),
+        "PYTHONUNBUFFERED":      "1",
+        "PYTHONIOENCODING":      "utf-8",
+    })
+    try:
+        proc = subprocess.Popen(
+            [PYTHON, "-u", str(AGENTS_DIR / AGENTS[agent_id]["script"])],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cwd=str(AGENTS_DIR), encoding="utf-8", errors="replace",
+            bufsize=1, env=env
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    running_procs[key] = proc
+    app.logger.warning(f"[api_agent_run] {agent_id} lancé pour user {uid} via API token")
+    return jsonify({"status": "started", "agent": agent_id, "user_id": uid})
+
+
 @app.route("/api/candidatures")
 def api_get_candidatures():
     token = request.headers.get("X-User-Token","")
