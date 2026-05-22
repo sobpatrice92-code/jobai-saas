@@ -1025,13 +1025,8 @@ async def run():
             timezone_id="America/Toronto",
             ignore_default_args=["--enable-automation", "--enable-blink-features=IdleDetection"],
         )
-        if SMARTPROXY_USER and SMARTPROXY_PASS:
-            session_id = "u" + SAAS_USER_ID
-            launch_kwargs["proxy"] = {
-                "server":   "http://gate.smartproxy.com:10001",
-                "username": SMARTPROXY_USER + "-session-" + session_id,
-                "password": SMARTPROXY_PASS,
-            }
+        # Phase 4 sans proxy : les cookies LinkedIn authentifient la session.
+        # Smartproxy cause des timeouts réseau pour le navigateur (port 10001 trop lent).
         browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
         if _STEALTH_LIB:
@@ -1135,7 +1130,12 @@ async def run():
                         log("Cookies (avertissement) : " + str(e)[:50])
 
             # Vérifier la session LinkedIn
-            await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
+            try:
+                await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=60000)
+            except Exception as e:
+                log("Goto feed erreur : " + str(e)[:80])
+                log("Phase 4 annulée — impossible d'atteindre LinkedIn (réseau/proxy)")
+                return
             try:
                 await page.wait_for_load_state("networkidle", timeout=10000)
             except Exception:
