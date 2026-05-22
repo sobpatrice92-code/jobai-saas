@@ -595,6 +595,14 @@ def api_agent_run(agent_id):
         return jsonify({"error": str(e)}), 500
     running_procs[key] = proc
     app.logger.warning(f"[api_agent_run] {agent_id} lancé pour user {uid} via API token")
+
+    # Thread daemon qui draine stdout pour éviter blocage du pipe (sans client SSE)
+    def _drain(p, aid):
+        for line in p.stdout:
+            app.logger.warning(f"[AGENT:{aid}] {line.rstrip()}")
+    t = threading.Thread(target=_drain, args=(proc, agent_id), daemon=True)
+    t.start()
+
     return jsonify({"status": "started", "agent": agent_id, "user_id": uid})
 
 
