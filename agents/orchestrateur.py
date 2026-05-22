@@ -1035,8 +1035,15 @@ async def run():
             timezone_id="America/Toronto",
             ignore_default_args=["--enable-automation", "--enable-blink-features=IdleDetection"],
         )
-        # Phase 4 sans proxy : les cookies LinkedIn authentifient la session.
-        # Smartproxy cause des timeouts réseau pour le navigateur (port 10001 trop lent).
+        # Smartproxy résidentiel pour le browser — IP datacenter Railway bloquée par LinkedIn
+        if SMARTPROXY_USER and SMARTPROXY_PASS:
+            session_id = "u" + SAAS_USER_ID
+            launch_kwargs["proxy"] = {
+                "server":   "http://gate.smartproxy.com:10001",
+                "username": SMARTPROXY_USER + "-session-" + session_id,
+                "password": SMARTPROXY_PASS,
+            }
+            log("Browser Phase 4 : Smartproxy résidentiel activé")
         browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
         if _STEALTH_LIB:
@@ -1117,13 +1124,23 @@ async def run():
                         }
                         if pw_c["name"] and pw_c["value"]:
                             pw_cookies.append(pw_c)
+                    # Naviguer sur linkedin.com d'abord pour établir le domaine
+                    await page.goto("https://www.linkedin.com/", wait_until="domcontentloaded", timeout=60000)
                     await browser.add_cookies(pw_cookies)
                     log("Cookies LinkedIn injectes : " + str(len(pw_cookies)) + " cookies")
+                    # Vérifier que li_at est bien chargé
+                    all_c = await browser.cookies(["https://www.linkedin.com"])
+                    li_at = next((c for c in all_c if c["name"] == "li_at"), None)
+                    if li_at:
+                        log("li_at confirmé dans browser : " + li_at["value"][:15] + "...")
+                    else:
+                        log("⚠️ li_at NON trouvé dans browser après injection!")
                 except Exception as e:
                     log("Erreur injection cookies : " + str(e)[:80])
             elif LINKEDIN_LI_AT:
                 li_at_val = LINKEDIN_LI_AT.strip()
                 log("Cookie li_at seul : " + str(len(li_at_val)) + " chars")
+                await page.goto("https://www.linkedin.com/", wait_until="domcontentloaded", timeout=60000)
                 await browser.add_cookies([{
                     "name": "li_at", "value": li_at_val,
                     "domain": ".linkedin.com", "path": "/",
@@ -1134,6 +1151,7 @@ async def run():
                 saved_cookies = _load_cookies()
                 if saved_cookies:
                     try:
+                        await page.goto("https://www.linkedin.com/", wait_until="domcontentloaded", timeout=60000)
                         await browser.add_cookies(saved_cookies)
                         log("Cookies LinkedIn charges depuis DB (" + str(len(saved_cookies)) + " cookies)")
                     except Exception as e:
