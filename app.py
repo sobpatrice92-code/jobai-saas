@@ -55,19 +55,22 @@ Ce rappel est envoyé automatiquement tous les 25 jours.
 
 — L'équipe JobAI
 """
-        resend_key = os.getenv("RESEND_API_KEY", "")
-        resend_from = os.getenv("RESEND_FROM", "JobAI <noreply@jobai-pro.com>")
-        if resend_key:
+        brevo_key  = os.getenv("BREVO_API_KEY", "")
+        brevo_from = os.getenv("BREVO_FROM_EMAIL", "")
+        brevo_name = os.getenv("BREVO_FROM_NAME", "JobAI")
+        if brevo_key and brevo_from:
             r = _req.post(
-                "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {resend_key}"},
-                json={"from": resend_from, "to": [dest], "subject": msg["Subject"], "text": body},
+                "https://api.brevo.com/v3/smtp/email",
+                headers={"api-key": brevo_key, "Content-Type": "application/json"},
+                json={"sender": {"name": brevo_name, "email": brevo_from},
+                      "to": [{"email": dest}],
+                      "subject": msg["Subject"], "textContent": body},
                 timeout=10
             )
-            if r.status_code in (200, 201):
-                app.logger.warning(f"[cookies_reminder] Rappel envoyé à {dest} via Resend (user {uid})")
+            if r.status_code in (200, 201, 202):
+                app.logger.warning(f"[cookies_reminder] Rappel envoyé à {dest} via Brevo (user {uid})")
                 return
-            app.logger.warning(f"[cookies_reminder] Resend erreur {r.status_code}: {r.text[:80]}")
+            app.logger.warning(f"[cookies_reminder] Brevo erreur {r.status_code}: {r.text[:80]}")
         # Fallback SMTP (local uniquement)
         msg.attach(MIMEText(body, "plain", "utf-8"))
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
