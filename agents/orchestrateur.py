@@ -581,6 +581,106 @@ def scraper_jobs_http(kw: str, location: str) -> list:
     return offres
 
 
+async def _linkedin_login(page, browser) -> bool:
+    """Auto-login LinkedIn avec email/password. Retourne True si connecté."""
+    if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
+        log("Auto-login impossible : LINKEDIN_EMAIL ou LINKEDIN_PASSWORD manquant dans le Setup")
+        return False
+    log("Auto-login LinkedIn en cours (" + LINKEDIN_EMAIL + ")...")
+    # Essayer d'abord la page où LinkedIn a redirigé, puis /login
+    login_urls = [page.url if "login" in page.url else "", "https://www.linkedin.com/login", "https://www.linkedin.com/uas/login"]
+    for login_url in login_urls:
+        if not login_url:
+            continue
+        try:
+            if page.url != login_url:
+                await page.goto(login_url, wait_until="networkidle", timeout=40000)
+            else:
+                # Déjà sur la page login — attendre que tout soit chargé
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception:
+                    pass
+            await asyncio.sleep(4)
+            log("URL login tentée : " + page.url[:80])
+        except Exception as e:
+            log("Goto login erreur : " + str(e)[:50])
+            continue
+
+        # Chercher le champ email avec tous les sélecteurs possibles
+        email_sels = [
+            "#username",
+            "input[name='session_key']",
+            "input[autocomplete='username']",
+            "input[type='email']",
+            "input[autocomplete='email']",
+            "input[id*='username']",
+            "input[id*='email']",
+            "form input[type='text']",
+        ]
+        email_sel = None
+        for sel in email_sels:
+            try:
+                await page.wait_for_selector(sel, timeout=6000)
+                email_sel = sel
+                break
+            except Exception:
+                continue
+
+        if not email_sel:
+            try:
+                snippet = (await page.content())[:300].replace("\n", " ")
+                log("Aucun champ email — HTML debut : " + snippet[:150])
+            except Exception:
+                pass
+            continue  # essayer l'URL suivante
+
+        # Remplir email
+        await page.fill(email_sel, LINKEDIN_EMAIL)
+        log("Email rempli via " + email_sel)
+        await asyncio.sleep(random.uniform(0.8, 1.5))
+
+        # Remplir password
+        pass_sel = None
+        for sel in ["#password", "input[name='session_password']", "input[type='password']"]:
+            try:
+                el = page.locator(sel).first
+                if await el.count() > 0:
+                    pass_sel = sel
+                    break
+            except Exception:
+                continue
+        if not pass_sel:
+            log("Champ password introuvable")
+            continue
+        await page.fill(pass_sel, LINKEDIN_PASSWORD)
+        log("Password rempli")
+        await asyncio.sleep(random.uniform(0.5, 1.0))
+
+        # Soumettre
+        await page.click("button[type='submit']")
+        await asyncio.sleep(10)
+        url_now = page.url
+        log("URL apres login : " + url_now[:80])
+
+        if "checkpoint" in url_now or "challenge" in url_now:
+            log("LinkedIn demande une vérification 2FA — rafraichissez vos cookies manuellement")
+            return False
+        if "login" in url_now or "authwall" in url_now or "uas" in url_now:
+            log("Echec connexion — email/password incorrect ou LinkedIn bloque l'IP")
+            return False
+
+        log("Connexion LinkedIn reussie !")
+        cookies = await browser.cookies()
+        _save_cookies(cookies)
+        log("Nouveaux cookies sauvegardes en base (" + str(len(cookies)) + " cookies)")
+        return True
+
+    log("Impossible de se connecter — LinkedIn n'affiche pas de formulaire standard")
+    log("=> Rafraichissez vos cookies LinkedIn dans le Setup (Cookie-Editor)")
+    return False
+
+
 async def run():
     print("="*60, flush=True)
     print("  ORCHESTRATEUR LINKEDIN v9 - HTTP SCRAPING + EASY APPLY", flush=True)
@@ -744,56 +844,11 @@ async def run():
             await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(4)
             log("URL apres goto feed : " + page.url[:80])
-            if "login" in page.url or "authwall" in page.url or "checkpoint" in page.url:
-                if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
-                    log("Session expiree — configurez LinkedIn Email/Password dans le Setup")
+            if "login" in page.url or "authwall" in page.url or "checkpoint" in page.url or "uas" in page.url:
+                connecte = await _linkedin_login(page, browser)
+                if not connecte:
+                    log("Phase 4 annulée — session LinkedIn invalide")
                     return
-                log("Connexion LinkedIn...")
-                await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(3)
-                try:
-                    await page.wait_for_selector("#username", timeout=15000)
-                except Exception:
-                    log("Champ #username introuvable — URL : " + page.url[:80])
-                    for sel in ["input[name='session_key']", "input[type='email']", "input[autocomplete='email']"]:
-                        try:
-                            await page.wait_for_selector(sel, timeout=5000)
-                            await page.fill(sel, LINKEDIN_EMAIL)
-                            log("Email rempli via " + sel)
-                            break
-                        except Exception:
-                            continue
-                    else:
-                        log("Impossible de remplir email — arret")
-                        return
-                else:
-                    await page.fill("#username", LINKEDIN_EMAIL)
-                    log("Email rempli")
-                await asyncio.sleep(random.uniform(0.8, 1.5))
-                try:
-                    await page.fill("#password", LINKEDIN_PASSWORD)
-                except Exception:
-                    for sel in ["input[name='session_password']", "input[type='password']"]:
-                        try:
-                            await page.fill(sel, LINKEDIN_PASSWORD)
-                            break
-                        except Exception:
-                            continue
-                await asyncio.sleep(random.uniform(0.5, 1.0))
-                await page.click("button[type='submit']")
-                await asyncio.sleep(8)
-                url_now = page.url
-                log("URL apres login : " + url_now[:80])
-                if "checkpoint" in url_now:
-                    log("LinkedIn demande une verification de securite")
-                    return
-                if "login" in url_now or "authwall" in url_now:
-                    log("Echec connexion LinkedIn — verifiez email/mot de passe dans le Setup")
-                    return
-                log("Connexion LinkedIn reussie")
-                cookies = await browser.cookies()
-                _save_cookies(cookies)
-                log("Cookies sauvegardes en base (" + str(len(cookies)) + " cookies)")
             else:
                 log("Session LinkedIn active")
                 cookies = await browser.cookies()
