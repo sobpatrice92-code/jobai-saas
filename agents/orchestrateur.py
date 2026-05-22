@@ -698,14 +698,22 @@ def scraper_jobs_http(kw: str, location: str) -> list:
     offres = []
     for start in (0, 25):
         try:
-            resp = _req.get(
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
-                params={"keywords": kw, "location": location,
-                        "f_TPR": "r604800", "start": start},
-                headers=_LI_HEADERS, proxies=_proxy_dict(), timeout=20,
-            )
-            if resp.status_code != 200:
-                log("  LinkedIn HTTP " + str(resp.status_code) + " pour " + kw[:25])
+            # Essayer sans proxy d'abord (API publique = pas besoin de proxy)
+            resp = None
+            for proxies in ({}, _proxy_dict()):
+                try:
+                    resp = _req.get(
+                        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+                        params={"keywords": kw, "location": location,
+                                "f_TPR": "r604800", "start": start},
+                        headers=_LI_HEADERS, proxies=proxies or None, timeout=20,
+                    )
+                    if resp.status_code == 200:
+                        break
+                except Exception:
+                    continue
+            if resp is None or resp.status_code != 200:
+                log("  LinkedIn HTTP " + str(resp.status_code if resp else "ERR") + " pour " + kw[:25])
                 break
             soup = BeautifulSoup(resp.text, "html.parser")
             cards = soup.find_all("div", class_=lambda c: c and "base-card" in c)
@@ -744,11 +752,18 @@ def get_job_description_http(lien: str) -> str:
         return ""
     job_id = m.group(1)
     try:
-        resp = _req.get(
-            "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/" + job_id,
-            headers=_LI_HEADERS, proxies=_proxy_dict(), timeout=15,
-        )
-        if resp.status_code == 200:
+        resp = None
+        for proxies in ({}, _proxy_dict()):
+            try:
+                resp = _req.get(
+                    "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/" + job_id,
+                    headers=_LI_HEADERS, proxies=proxies or None, timeout=15,
+                )
+                if resp.status_code == 200:
+                    break
+            except Exception:
+                continue
+        if resp and resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             desc = (soup.find("div", class_=lambda c: c and "description__text" in (c or "")) or
                     soup.find("div", {"id": "job-details"}) or
