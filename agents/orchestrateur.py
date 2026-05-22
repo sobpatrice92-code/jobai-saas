@@ -561,12 +561,18 @@ async def run():
             "--disable-dev-shm-usage",
             "--disable-blink-features=AutomationControlled",
             "--disable-infobars",
-            "--window-size=1400,900",
+            "--window-size=1280,720",
             "--disable-extensions",
             "--disable-gpu",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-default-apps",
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
+            "--memory-pressure-off",
+            "--renderer-process-limit=1",
         ]
         launch_kwargs = dict(
             user_data_dir=PROFILE_PATH,
@@ -713,6 +719,11 @@ async def run():
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     await asyncio.sleep(random.randint(2000, 3500) / 1000)
+                    # Vérifier qu'on est bien sur une page LinkedIn valide
+                    cur_url = page.url
+                    if "linkedin.com/jobs" not in cur_url and "linkedin.com/feed" not in cur_url:
+                        log("    Page inattendue : " + cur_url[:60] + " — skip")
+                        continue
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     await asyncio.sleep(2)
                     extracted = await page.evaluate(JS_EXTRACT)
@@ -722,6 +733,7 @@ async def run():
                     log("    -> " + str(len(extracted)) + " offres")
                 except Exception as e:
                     log("    Erreur : " + str(e)[:60])
+                    await asyncio.sleep(3)
 
             vus, uniques = set(), []
             for o in all_offres:
