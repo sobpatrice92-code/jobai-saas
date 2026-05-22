@@ -211,10 +211,10 @@ def lire_pdf(path):
     return "\n".join(p.extract_text() or "" for p in reader.pages).strip()
 
 def generer_lettre(cv_texte, offre):
-    titre   = offre.get("titre", "")
-    company = offre.get("company", "")
-    desc    = offre.get("description", "")[:400]
-    date_str= datetime.now().strftime("%d %B %Y")
+    titre      = offre.get("titre", "")
+    company    = offre.get("company", "")
+    desc       = offre.get("description", "")[:1800]
+    date_str   = datetime.now().strftime("%d %B %Y")
     ville_prov = CANDIDAT["ville"] + ", " + CANDIDAT["province"]
     signature  = (CANDIDAT["nom_complet"] + "\n"
                   + CANDIDAT["telephone"] + " | " + CANDIDAT["email"] + "\n"
@@ -222,30 +222,171 @@ def generer_lettre(cv_texte, offre):
     entete = (
         CANDIDAT["nom_complet"] + "\n"
         + ville_prov + "\n"
-        + "Tel : " + CANDIDAT["telephone"] + " | Email : " + CANDIDAT["email"] + "\n\n"
+        + "Tél : " + CANDIDAT["telephone"] + "  |  Courriel : " + CANDIDAT["email"] + "\n\n"
         + date_str + "\n\n"
-        + "Objet : Candidature - " + titre + " chez " + company + "\n\n"
+        + "Objet : Candidature — " + titre + " chez " + company + "\n\n"
         + "Madame, Monsieur,\n\n"
-    )
-    prompt = (
-        "Redige UNIQUEMENT les 3 paragraphes du corps en francais. INTERDICTION de crochets [X].\n"
-        "P1 : interet pour " + titre + " chez " + company + "\n"
-        "P2 : 2 realisations chiffrees issues du profil ci-dessous\n"
-        "P3 : disponibilite + appel a action\n"
-        "Profil du candidat : " + cv_texte[:500] + "\n"
-        "Poste : " + titre + " chez " + company + "\nDescription : " + desc
     )
     if not client:
         return (entete + "Veuillez trouver ci-joint mon CV pour le poste de "
                 + titre + " chez " + company + ".\n\nCordialement,\n\n" + signature)
+    prompt = (
+        "Tu es expert RH canadien certifié, spécialiste ATS (Applicant Tracking Systems).\n"
+        "Rédige une lettre de motivation ATS-optimisée UNIQUE pour CE poste précis.\n\n"
+        "RÈGLES ABSOLUES :\n"
+        "1. Utilise les mots-clés EXACTS de la description du poste (logiciels, certifications, verbes d'action)\n"
+        "2. Zéro crochet [X], zéro placeholder, zéro phrase générique\n"
+        "3. Exactement 3 paragraphes, 80-100 mots chacun (total 250-300 mots)\n"
+        "4. Chiffres concrets tirés du profil (%, $, m², années, nombre d'unités)\n"
+        "5. Commence P1 par une phrase d'accroche forte mentionnant EXACTEMENT « " + titre + " »\n"
+        "6. Adapte le vocabulaire au secteur et à l'entreprise « " + company + " »\n\n"
+        "P1 : Accroche percutante + intérêt spécifique pour ce poste + lien direct avec l'offre\n"
+        "P2 : 2-3 réalisations chiffrées du profil, directement liées aux exigences du poste\n"
+        "P3 : Valeur ajoutée différenciante + disponibilité immédiate + appel à l'action\n\n"
+        "POSTE : " + titre + " chez " + company + "\n"
+        "DESCRIPTION DU POSTE :\n" + (desc if desc else "Poste en " + titre) + "\n\n"
+        "PROFIL DU CANDIDAT :\n" + cv_texte[:1200] + "\n\n"
+        "Rédige UNIQUEMENT les 3 paragraphes du corps. Pas d'entête, pas de signature."
+    )
     resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=600
+        max_tokens=750,
+        temperature=0.7,
     )
     corps = resp.choices[0].message.content.strip()
     corps = "\n".join([l for l in corps.split("\n") if not re.search(r"\[.+?\]", l)])
     return entete + corps + "\n\nCordialement,\n\n" + signature
+
+
+def generer_cv_tailored(cv_texte: str, offre: dict) -> str:
+    """Génère un CV PDF ATS-optimisé et personnalisé pour cette offre. Retourne le chemin."""
+    titre   = offre.get("titre", "")
+    company = offre.get("company", "")
+    desc    = offre.get("description", "")[:1500]
+    cv_dir  = Path(PROFILE_PATH) / "cvs_tailored"
+    cv_dir.mkdir(parents=True, exist_ok=True)
+    safe    = re.sub(r"[^\w]", "_", titre)[:25]
+    cv_out  = str(cv_dir / ("CV_" + CANDIDAT["prenom"] + "_" + safe + ".pdf"))
+
+    data = {}
+    if client:
+        prompt = (
+            "Analyse ce profil et génère un CV ATS-optimisé pour ce poste précis.\n"
+            "Réponds UNIQUEMENT en JSON valide (sans markdown, sans ```).\n\n"
+            "POSTE CIBLE : " + titre + " chez " + company + "\n"
+            "DESCRIPTION : " + (desc if desc else titre) + "\n"
+            "PROFIL SOURCE : " + cv_texte[:2500] + "\n\n"
+            '{"titre_professionnel":"...","resume":"3 phrases ATS avec mots-clés exacts du poste",'
+            '"competences":["comp1","comp2","comp3","comp4","comp5","comp6","comp7","comp8"],'
+            '"experiences":[{"poste":"...","entreprise":"...","lieu":"...","periode":"...",'
+            '"points":["réalisation chiffrée 1","réalisation chiffrée 2","réalisation 3"]}],'
+            '"formations":[{"diplome":"...","etablissement":"...","lieu":"...","annee":"..."}],'
+            '"langues":["Français (natif)","Anglais (professionnel)"],'
+            '"certifications":[]}'
+        )
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1600,
+            )
+            raw = resp.choices[0].message.content.strip()
+            m   = re.search(r'\{[\s\S]*\}', raw)
+            if m:
+                data = json.loads(m.group())
+        except Exception as e:
+            log("  CV tailored GPT erreur : " + str(e)[:60])
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import cm
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+        from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+        from reportlab.lib import colors
+
+        BLEU = colors.HexColor("#1a3c5e")
+        GRIS = colors.HexColor("#555555")
+
+        s_nom   = ParagraphStyle("Nom",  fontName="Helvetica-Bold", fontSize=20,
+                                  alignment=TA_CENTER, textColor=BLEU, spaceAfter=2)
+        s_sub   = ParagraphStyle("Sub",  fontName="Helvetica",      fontSize=11,
+                                  alignment=TA_CENTER, textColor=BLEU, spaceAfter=3)
+        s_con   = ParagraphStyle("Con",  fontName="Helvetica",      fontSize=8.5,
+                                  alignment=TA_CENTER, textColor=GRIS, spaceAfter=6)
+        s_sec   = ParagraphStyle("Sec",  fontName="Helvetica-Bold", fontSize=10,
+                                  textColor=BLEU, spaceBefore=10, spaceAfter=3)
+        s_body  = ParagraphStyle("Body", fontName="Helvetica",      fontSize=9,
+                                  leading=13, alignment=TA_JUSTIFY, spaceAfter=3)
+        s_bul   = ParagraphStyle("Bul",  fontName="Helvetica",      fontSize=9,
+                                  leading=13, leftIndent=10, spaceAfter=2)
+        s_job   = ParagraphStyle("Job",  fontName="Helvetica-Bold", fontSize=9.5, spaceAfter=1)
+        s_meta  = ParagraphStyle("Meta", fontName="Helvetica",      fontSize=8.5,
+                                  textColor=GRIS, spaceAfter=3)
+
+        doc   = SimpleDocTemplate(cv_out, pagesize=A4,
+                                  leftMargin=1.8*cm, rightMargin=1.8*cm,
+                                  topMargin=1.5*cm,  bottomMargin=1.5*cm)
+        story = []
+        hr    = lambda: story.append(HRFlowable(width="100%", thickness=0.5,
+                                                color=BLEU, spaceAfter=4))
+
+        story.append(Paragraph(CANDIDAT["nom_complet"], s_nom))
+        story.append(Paragraph(data.get("titre_professionnel", titre), s_sub))
+        story.append(Paragraph(
+            CANDIDAT["ville"] + ", " + CANDIDAT["province"] +
+            " | " + CANDIDAT["telephone"] + " | " + CANDIDAT["email"], s_con))
+        story.append(HRFlowable(width="100%", thickness=2, color=BLEU, spaceAfter=8))
+
+        resume = data.get("resume", "") or cv_texte[:300]
+        if resume:
+            story.append(Paragraph("PROFIL PROFESSIONNEL", s_sec)); hr()
+            story.append(Paragraph(resume, s_body))
+
+        skills = data.get("competences", [])
+        if skills:
+            story.append(Paragraph("COMPÉTENCES CLÉS", s_sec)); hr()
+            for i in range(0, len(skills), 2):
+                line = "✓ " + skills[i]
+                if i + 1 < len(skills):
+                    line += "      ✓ " + skills[i + 1]
+                story.append(Paragraph(line, s_bul))
+
+        exps = data.get("experiences", [])
+        if exps:
+            story.append(Paragraph("EXPÉRIENCE PROFESSIONNELLE", s_sec)); hr()
+            for exp in exps:
+                story.append(Paragraph("<b>" + exp.get("poste", "") + "</b>", s_job))
+                story.append(Paragraph(
+                    exp.get("entreprise","") + " | " + exp.get("lieu","") +
+                    " | " + exp.get("periode",""), s_meta))
+                for pt in exp.get("points", []):
+                    story.append(Paragraph("• " + pt, s_bul))
+                story.append(Spacer(1, 4))
+
+        formations = data.get("formations", [])
+        if formations:
+            story.append(Paragraph("FORMATION", s_sec)); hr()
+            for f in formations:
+                story.append(Paragraph("<b>" + f.get("diplome","") + "</b>", s_job))
+                story.append(Paragraph(
+                    f.get("etablissement","") + " | " + f.get("lieu","") +
+                    " | " + f.get("annee",""), s_meta))
+
+        langues = data.get("langues", [])
+        certs   = data.get("certifications", [])
+        if langues or certs:
+            story.append(Paragraph("LANGUES & CERTIFICATIONS", s_sec)); hr()
+            story.append(Paragraph(" · ".join(langues + certs), s_body))
+
+        doc.build(story)
+        log("  CV personnalisé : " + Path(cv_out).name)
+        return cv_out
+
+    except Exception as e:
+        log("  CV tailored erreur : " + str(e)[:80])
+        return CV_PATH
 
 def scorer_offre(cv_texte, offre):
     if not client:
@@ -322,7 +463,7 @@ def trouver_meilleur_email(company, poste):
         return email, "auto"
     return None, None
 
-def envoyer_email_candidature(offre, lettre, email_dest=None):
+def envoyer_email_candidature(offre, lettre, email_dest=None, cv_tailored=None):
     from email_helper import send_email
     titre   = offre.get("titre", "Poste")
     company = offre.get("company", "Entreprise")
@@ -332,12 +473,15 @@ def envoyer_email_candidature(offre, lettre, email_dest=None):
     if email_dest:
         corps = lettre
     else:
-        site = trouver_site_carrieres(company)
+        site   = trouver_site_carrieres(company)
         action = ("\n\nACTION : Postulez sur " + site) if site else ""
-        corps = "[ApplyBot] " + titre + " | " + company + " - " + str(score) + "/100\n" + lien + action + "\n\n" + "-"*40 + "\n" + lettre
-    subject = "Candidature — " + titre + " | " + company
-    att = [{"path": CV_PATH, "name": "CV.pdf"}] if Path(CV_PATH).exists() else []
-    ok, err = send_email(dest, subject, corps, reply_to=GMAIL_ADDRESS, attachments=att)
+        corps  = ("[ApplyBot] " + titre + " | " + company + " - " + str(score) + "/100\n"
+                  + lien + action + "\n\n" + "-"*40 + "\n" + lettre)
+    subject  = "Candidature — " + titre + " | " + company
+    cv_file  = cv_tailored if cv_tailored and Path(cv_tailored).exists() else CV_PATH
+    cv_nom   = "CV_" + CANDIDAT["prenom"] + "_" + re.sub(r"[^\w]","_",titre)[:20] + ".pdf"
+    att      = [{"path": cv_file, "name": cv_nom}] if cv_file and Path(cv_file).exists() else []
+    ok, err  = send_email(dest, subject, corps, reply_to=GMAIL_ADDRESS, attachments=att)
     if not ok:
         log("Email erreur : " + err)
     return ok
@@ -531,22 +675,26 @@ async def postuler_externe(browser, page, offre, lettre):
         except Exception:
             return "echec"
 
+def _proxy_dict() -> dict:
+    """Retourne le dict proxies Smartproxy si configuré."""
+    if not SMARTPROXY_USER or not SMARTPROXY_PASS:
+        return {}
+    p_url = ("http://" + SMARTPROXY_USER + "-session-u" + SAAS_USER_ID +
+             ":" + SMARTPROXY_PASS + "@gate.smartproxy.com:10001")
+    return {"http": p_url, "https": p_url}
+
+_LI_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/124.0.0.0 Safari/537.36"),
+    "Accept-Language": "fr-CA,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Referer": "https://www.linkedin.com/jobs/",
+}
+
+
 def scraper_jobs_http(kw: str, location: str) -> list:
     """LinkedIn public guest API — aucun navigateur requis, aucun crash."""
-    proxies = None
-    if SMARTPROXY_USER and SMARTPROXY_PASS:
-        session_id = "u" + SAAS_USER_ID
-        p_url = ("http://" + SMARTPROXY_USER + "-session-" + session_id +
-                 ":" + SMARTPROXY_PASS + "@gate.smartproxy.com:10001")
-        proxies = {"http": p_url, "https": p_url}
-    headers = {
-        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                       "Chrome/124.0.0.0 Safari/537.36"),
-        "Accept-Language": "fr-CA,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Referer": "https://www.linkedin.com/jobs/",
-    }
     offres = []
     for start in (0, 25):
         try:
@@ -554,7 +702,7 @@ def scraper_jobs_http(kw: str, location: str) -> list:
                 "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
                 params={"keywords": kw, "location": location,
                         "f_TPR": "r604800", "start": start},
-                headers=headers, proxies=proxies, timeout=20,
+                headers=_LI_HEADERS, proxies=_proxy_dict(), timeout=20,
             )
             if resp.status_code != 200:
                 log("  LinkedIn HTTP " + str(resp.status_code) + " pour " + kw[:25])
@@ -573,9 +721,12 @@ def scraper_jobs_http(kw: str, location: str) -> list:
                             if href.startswith("/") else href.split("?")[0])
                     titre   = h3.get_text(strip=True)
                     company = h4.get_text(strip=True) if h4 else ""
+                    # Snippet description depuis la card
+                    snip = card.find("p") or card.find("div", class_=lambda c: c and "snippet" in (c or ""))
+                    snippet = snip.get_text(strip=True)[:300] if snip and snip not in (h3, h4) else ""
                     if titre and company and lien:
                         offres.append({"titre": titre, "company": company,
-                                       "lien": lien, "description": ""})
+                                       "lien": lien, "description": snippet})
                 except Exception:
                     pass
             if len(cards) < 10:
@@ -584,6 +735,29 @@ def scraper_jobs_http(kw: str, location: str) -> list:
             log("  HTTP erreur scraping : " + str(e)[:60])
             break
     return offres
+
+
+def get_job_description_http(lien: str) -> str:
+    """Récupère la description complète du poste via l'API publique LinkedIn."""
+    m = re.search(r'/jobs/view/(\d+)', lien)
+    if not m:
+        return ""
+    job_id = m.group(1)
+    try:
+        resp = _req.get(
+            "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/" + job_id,
+            headers=_LI_HEADERS, proxies=_proxy_dict(), timeout=15,
+        )
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            desc = (soup.find("div", class_=lambda c: c and "description__text" in (c or "")) or
+                    soup.find("div", {"id": "job-details"}) or
+                    soup.find("section", class_=lambda c: c and "description" in (c or "")))
+            if desc:
+                return desc.get_text(separator=" ", strip=True)[:2500]
+    except Exception:
+        pass
+    return ""
 
 
 async def _linkedin_login(page, browser) -> bool:
@@ -736,16 +910,29 @@ async def run():
         log("Aucune offre retenue - terminé")
         return
 
-    # ── PHASE 3 : Lettres + Emails de confirmation ──────────────────────────────
-    log("PHASE 3 - Lettres + Emails confirmation")
+    # ── PHASE 2.5 : Descriptions complètes pour les offres retenues ─────────────
+    log("PHASE 2.5 - Descriptions complètes des offres retenues")
+    for i, offre in enumerate(retenues, 1):
+        if not offre.get("description") or len(offre["description"]) < 100:
+            log("  [" + str(i) + "/" + str(len(retenues)) + "] " + offre["company"][:30] + " — fetch desc...")
+            desc_full = get_job_description_http(offre.get("lien", ""))
+            if desc_full:
+                offre["description"] = desc_full
+                log("    -> " + str(len(desc_full)) + " caractères")
+
+    # ── PHASE 3 : Lettres ATS + CV personnalisés + Emails ───────────────────────
+    log("PHASE 3 - Lettres ATS personnalisées + CV tailored")
     for offre in retenues:
         try:
-            offre["lettre"] = generer_lettre(cv_texte, offre)
-            if envoyer_email_candidature(offre, offre["lettre"]):
-                log("  Email confirmation : " + offre["company"])
+            offre["lettre"]     = generer_lettre(cv_texte, offre)
+            offre["cv_tailored"]= generer_cv_tailored(cv_texte, offre)
+            if envoyer_email_candidature(offre, offre["lettre"],
+                                         cv_tailored=offre.get("cv_tailored")):
+                log("  Email + CV tailored : " + offre["company"])
         except Exception as e:
             log("  Erreur : " + str(e)[:50])
-            offre["lettre"] = ""
+            offre["lettre"]      = ""
+            offre["cv_tailored"] = None
 
     # ── PHASE 4 : Apply Bot v9 (navigateur UNIQUEMENT ici) ─────────────────────
     log("PHASE 4 - Apply Bot v9 (Easy Apply)")
@@ -977,7 +1164,7 @@ async def run():
                     log("  Erreur : " + str(e)[:60])
                     try:
                         if lettre:
-                            envoyer_email_candidature(offre, lettre)
+                            envoyer_email_candidature(offre, lettre, cv_tailored=offre.get("cv_tailored"))
                             sauvegarder_suivi(offre, "Email suivi", plateforme="LinkedIn")
                             stats["email_suivi"] = stats.get("email_suivi", 0) + 1
                         else:
