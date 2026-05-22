@@ -164,29 +164,17 @@ def construire_email_auto(company):
     return f"careers@{nom}.ca"
 
 def envoyer_email(offre, lettre, email_dest):
-    try:
-        msg = MIMEMultipart()
-        msg["From"]    = GMAIL_ADDRESS
-        msg["To"]      = email_dest
-        msg["Subject"] = "Candidature — " + offre.get("titre","") + " | " + offre.get("company","")
-        corps = lettre if email_dest != EMAIL_NOTIF else (
-            "[IndeedAgent] " + offre.get("titre","") + " | " + offre.get("company","") +
-            " - " + str(offre.get("score",0)) + "/100\nLien : " + offre.get("lien","") +
-            "\n\n" + "-"*40 + "\n" + lettre
-        )
-        msg.attach(MIMEText(corps, "plain", "utf-8"))
-        cv = Path(CV_PATH)
-        if cv.exists():
-            with open(cv, "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            safe_name = re.sub(r'[^a-zA-Z_]', '_', USER_NAME.replace(' ', '_'))
-            part.add_header("Content-Disposition", f"attachment; filename=\"CV_{safe_name}.pdf\"")
-            msg.attach(part)
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
-            server.sendmail(GMAIL_ADDRESS, email_dest, msg.as_string())
+    from email_helper import send_email
+    corps = lettre if email_dest != EMAIL_NOTIF else (
+        "[IndeedAgent] " + offre.get("titre","") + " | " + offre.get("company","") +
+        " - " + str(offre.get("score",0)) + "/100\nLien : " + offre.get("lien","") +
+        "\n\n" + "-"*40 + "\n" + lettre
+    )
+    subject = "Candidature — " + offre.get("titre","") + " | " + offre.get("company","")
+    safe_name = re.sub(r'[^a-zA-Z_]', '_', USER_NAME.replace(' ', '_'))
+    att = [{"path": CV_PATH, "name": f"CV_{safe_name}.pdf"}] if Path(CV_PATH).exists() else []
+    ok, err = send_email(email_dest, subject, corps, reply_to=GMAIL_ADDRESS, attachments=att)
+    if ok:
         return True
     except Exception as e:
         log(f"  Email erreur : {str(e)[:50]}")

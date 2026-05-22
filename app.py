@@ -6,7 +6,7 @@ from flask import (Flask, render_template, request, redirect, url_for,
 from flask_login import (LoginManager, UserMixin, login_user, logout_user,
                           login_required, current_user)
 from werkzeug.utils import secure_filename
-import subprocess, threading, os, json, re, base64, smtplib
+import subprocess, threading, os, json, re, base64, smtplib, requests as _req
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
@@ -55,11 +55,25 @@ Ce rappel est envoyé automatiquement tous les 25 jours.
 
 — L'équipe JobAI
 """
+        resend_key = os.getenv("RESEND_API_KEY", "")
+        resend_from = os.getenv("RESEND_FROM", "JobAI <noreply@jobai-pro.com>")
+        if resend_key:
+            r = _req.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_key}"},
+                json={"from": resend_from, "to": [dest], "subject": msg["Subject"], "text": body},
+                timeout=10
+            )
+            if r.status_code in (200, 201):
+                app.logger.warning(f"[cookies_reminder] Rappel envoyé à {dest} via Resend (user {uid})")
+                return
+            app.logger.warning(f"[cookies_reminder] Resend erreur {r.status_code}: {r.text[:80]}")
+        # Fallback SMTP (local uniquement)
         msg.attach(MIMEText(body, "plain", "utf-8"))
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(gmail, pwd)
             server.sendmail(gmail, dest, msg.as_string())
-        app.logger.warning(f"[cookies_reminder] Rappel envoyé à {dest} (user {uid})")
+        app.logger.warning(f"[cookies_reminder] Rappel envoyé à {dest} via SMTP (user {uid})")
     except Exception as e:
         app.logger.warning(f"[cookies_reminder] Erreur: {e}")
 

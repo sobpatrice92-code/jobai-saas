@@ -204,10 +204,14 @@ Approuvez directement sur le dashboard.
         msg["To"]      = GMAIL_ADDRESS
         msg["Subject"] = "[LinkedIn Optimizer] Approuver les modifications du profil ?"
         msg.attach(MIMEText(corps, "plain", "utf-8"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as srv:
-            srv.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
-            srv.sendmail(GMAIL_ADDRESS, GMAIL_ADDRESS, msg.as_string())
-        log(f"Apercu envoye a {GMAIL_ADDRESS}")
+        from email_helper import send_email
+        ok, err = send_email(GMAIL_ADDRESS, "[LinkedIn Optimizer] Approuver les modifications du profil ?",
+                             corps, reply_to=GMAIL_ADDRESS)
+        if ok:
+            log(f"Apercu envoye a {GMAIL_ADDRESS}")
+        else:
+            log(f"Email echoue : {err} — apercu affiche ci-dessous")
+            print(corps)
     except Exception as e:
         log(f"Email echoue : {e} — apercu affiche ci-dessous")
         print(corps)

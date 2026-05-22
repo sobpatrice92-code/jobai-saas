@@ -317,38 +317,24 @@ def trouver_meilleur_email(company, poste):
     return None, None
 
 def envoyer_email_candidature(offre, lettre, email_dest=None):
+    from email_helper import send_email
     titre   = offre.get("titre", "Poste")
     company = offre.get("company", "Entreprise")
     score   = offre.get("score", 0)
     lien    = offre.get("lien", "")
     dest    = email_dest if email_dest else EMAIL_DESTINAIRE
-    try:
-        msg = MIMEMultipart()
-        msg["From"]    = GMAIL_ADDRESS
-        msg["To"]      = dest
-        msg["Subject"] = "Candidature — " + titre + " | " + company
-        if email_dest:
-            corps = lettre
-        else:
-            site = trouver_site_carrieres(company)
-            action = ("\n\nACTION : Postulez sur " + site) if site else ""
-            corps = "[ApplyBot] " + titre + " | " + company + " - " + str(score) + "/100\n" + lien + action + "\n\n" + "-"*40 + "\n" + lettre
-        msg.attach(MIMEText(corps, "plain", "utf-8"))
-        cv = Path(CV_PATH)
-        if cv.exists():
-            with open(cv, "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition", "attachment; filename=\"CV_Patrice_Arnold_Sob_Feukam.pdf\"")
-            msg.attach(part)
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
-            server.sendmail(GMAIL_ADDRESS, dest, msg.as_string())
-        return True
-    except Exception as e:
-        log("Email erreur : " + str(e)[:50])
-        return False
+    if email_dest:
+        corps = lettre
+    else:
+        site = trouver_site_carrieres(company)
+        action = ("\n\nACTION : Postulez sur " + site) if site else ""
+        corps = "[ApplyBot] " + titre + " | " + company + " - " + str(score) + "/100\n" + lien + action + "\n\n" + "-"*40 + "\n" + lettre
+    subject = "Candidature — " + titre + " | " + company
+    att = [{"path": CV_PATH, "name": "CV.pdf"}] if Path(CV_PATH).exists() else []
+    ok, err = send_email(dest, subject, corps, reply_to=GMAIL_ADDRESS, attachments=att)
+    if not ok:
+        log("Email erreur : " + err)
+    return ok
 
 def sauvegarder_suivi(offre, statut, plateforme="LinkedIn"):
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)

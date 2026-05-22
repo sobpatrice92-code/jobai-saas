@@ -268,10 +268,14 @@ def envoyer_approbation(post_text, image_path, theme_fr):
             part.add_header("Content-Disposition",
                             f'attachment; filename="{Path(image_path).name}"')
             msg.attach(part)
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as srv:
-            srv.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
-            srv.sendmail(GMAIL_ADDRESS, GMAIL_ADDRESS, msg.as_string())
-        log(f"Notification email envoyee a {GMAIL_ADDRESS}")
+        from email_helper import send_email
+        ok, err = send_email(GMAIL_ADDRESS, msg["Subject"],
+                             corps, reply_to=GMAIL_ADDRESS,
+                             attachments=[{"path": image_path, "name": Path(image_path).name}] if image_path and Path(image_path).exists() else [])
+        if ok:
+            log(f"Notification email envoyee a {GMAIL_ADDRESS}")
+        else:
+            log(f"Email notif erreur : {err[:60]}")
     except Exception as e:
         log(f"Email notif : {str(e)[:60]}")
 
