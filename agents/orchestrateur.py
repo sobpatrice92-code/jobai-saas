@@ -767,7 +767,7 @@ async def _linkedin_login(page, browser) -> bool:
         return False
     log("Auto-login LinkedIn en cours (" + LINKEDIN_EMAIL + ")...")
 
-    JS_FILL = """(email, pwd) => {
+    JS_FILL = """([email, pwd]) => {
         const allInputs = Array.from(document.querySelectorAll('input'));
         let emailInp = null, pwdInp = null;
         for (const inp of allInputs) {
@@ -781,8 +781,6 @@ async def _linkedin_login(page, browser) -> bool:
                 pwdInp = inp;
         }
         if (!emailInp || !pwdInp) return false;
-        // Simuler la saisie
-        [emailInp, pwdInp].forEach(inp => inp.focus());
         emailInp.focus();
         emailInp.value = email;
         emailInp.dispatchEvent(new Event('input', {bubbles:true}));
@@ -791,13 +789,10 @@ async def _linkedin_login(page, browser) -> bool:
         pwdInp.value = pwd;
         pwdInp.dispatchEvent(new Event('input', {bubbles:true}));
         pwdInp.dispatchEvent(new Event('change', {bubbles:true}));
-        // Soumettre
         const btn = document.querySelector('button[type="submit"]') ||
-                    document.querySelector('button[data-litms-control-urn]') ||
                     Array.from(document.querySelectorAll('button')).find(b =>
                         (b.innerText||'').toLowerCase().includes('sign') ||
-                        (b.innerText||'').toLowerCase().includes('connect') ||
-                        (b.innerText||'').toLowerCase().includes('se connect'));
+                        (b.innerText||'').toLowerCase().includes('connect'));
         if (btn) btn.click();
         return true;
     }"""
@@ -813,8 +808,8 @@ async def _linkedin_login(page, browser) -> bool:
             continue
         try:
             if page.url != login_url:
-                await page.goto(login_url, wait_until="domcontentloaded", timeout=35000)
-            await asyncio.sleep(6)
+                await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(8)
             log("URL login tentée : " + page.url[:80])
         except Exception as e:
             log("Goto login erreur : " + str(e)[:50])
@@ -850,7 +845,7 @@ async def _linkedin_login(page, browser) -> bool:
         log("  Tentative login JS direct...")
         await asyncio.sleep(3)
         try:
-            ok = await page.evaluate(JS_FILL, LINKEDIN_EMAIL, LINKEDIN_PASSWORD)
+            ok = await page.evaluate(JS_FILL, [LINKEDIN_EMAIL, LINKEDIN_PASSWORD])
             if ok:
                 log("  JS direct : formulaire soumis")
                 await asyncio.sleep(12)
