@@ -77,13 +77,16 @@
 
     <div class="setup-card mb-3">
       <div class="section-title"><i class="bi bi-file-earmark-pdf me-1"></i>Votre CV</div>
-      {% if cfg.get('cv_path') %}
-      <div class="alert alert-success py-2 mb-3" style="font-size:.85rem;">
-        <i class="bi bi-check-circle me-2"></i>CV déjà uploadé — uploadez-en un nouveau pour le remplacer
+      {% if cfg.get('cv_path') or cfg.get('cv_content') %}
+      <div class="alert alert-success py-2 mb-3 d-flex align-items-center justify-content-between" style="font-size:.85rem;">
+        <span><i class="bi bi-check-circle me-2"></i>CV uploadé avec succès</span>
+        <a href="/cv/download" target="_blank" class="btn btn-sm btn-outline-success">
+          <i class="bi bi-eye me-1"></i>Voir mon CV
+        </a>
       </div>
       {% endif %}
       <input type="file" name="cv" class="form-control" accept=".pdf"/>
-      <small class="text-muted">Format PDF uniquement · Max 5 MB</small>
+      <small class="text-muted">Format PDF uniquement · Max 5 MB — remplace le CV actuel</small>
     </div>
 
     <div class="setup-card mb-3">

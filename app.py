@@ -2,7 +2,7 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8")
 
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, jsonify, Response, stream_with_context, flash)
+                   session, jsonify, Response, stream_with_context, flash, send_file)
 from flask_login import (LoginManager, UserMixin, login_user, logout_user,
                           login_required, current_user)
 from werkzeug.utils import secure_filename
@@ -427,6 +427,24 @@ def profile_reject():
         data["status"] = "rejected"
         pending.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return jsonify({"ok": True})
+
+# ── CV Download ───────────────────────────────────────────────
+@app.route("/cv/download")
+@login_required
+def cv_download():
+    import io
+    cv_content = models.get_cv_content(current_user.id)
+    if not cv_content:
+        flash("Aucun CV uploadé. Allez dans le Setup pour en ajouter un.", "warning")
+        return redirect(url_for("setup"))
+    pdf_bytes = base64.b64decode(cv_content)
+    nom = models.get_config(current_user.id).get("nom_complet", "CV").replace(" ", "_")
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"CV_{nom}.pdf",
+    )
 
 # ── Candidatures ──────────────────────────────────────────────
 @app.route("/candidatures")

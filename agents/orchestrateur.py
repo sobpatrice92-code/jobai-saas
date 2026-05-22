@@ -215,24 +215,29 @@ def generer_lettre(cv_texte, offre):
     company = offre.get("company", "")
     desc    = offre.get("description", "")[:400]
     date_str= datetime.now().strftime("%d %B %Y")
+    ville_prov = CANDIDAT["ville"] + ", " + CANDIDAT["province"]
+    signature  = (CANDIDAT["nom_complet"] + "\n"
+                  + CANDIDAT["telephone"] + " | " + CANDIDAT["email"] + "\n"
+                  + ville_prov)
     entete = (
-        "Patrice Arnold Sob Feukam\n"
-        "Vanier, Ottawa, Ontario\n"
-        "Tel : 514-236-4628 | Email : sobpatrice@yahoo.fr\n\n"
+        CANDIDAT["nom_complet"] + "\n"
+        + ville_prov + "\n"
+        + "Tel : " + CANDIDAT["telephone"] + " | Email : " + CANDIDAT["email"] + "\n\n"
         + date_str + "\n\n"
-        "Objet : Candidature - " + titre + " chez " + company + "\n\n"
-        "Madame, Monsieur,\n\n"
+        + "Objet : Candidature - " + titre + " chez " + company + "\n\n"
+        + "Madame, Monsieur,\n\n"
     )
     prompt = (
         "Redige UNIQUEMENT les 3 paragraphes du corps en francais. INTERDICTION de crochets [X].\n"
         "P1 : interet pour " + titre + " chez " + company + "\n"
-        "P2 : 2 realisations chiffrees chez SPA Construction SARL Cameroun\n"
+        "P2 : 2 realisations chiffrees issues du profil ci-dessous\n"
         "P3 : disponibilite + appel a action\n"
-        "Profil : 8 ans SPA Construction 2018-2024, AutoCAD Revit Civil 3D MS Project, DECOA La Cite Ottawa.\n"
+        "Profil du candidat : " + cv_texte[:500] + "\n"
         "Poste : " + titre + " chez " + company + "\nDescription : " + desc
     )
     if not client:
-        return entete + "Veuillez trouver ci-joint mon CV pour le poste de " + titre + " chez " + company + ".\n\nCordialement,\n\n" + CANDIDAT["nom_complet"]
+        return (entete + "Veuillez trouver ci-joint mon CV pour le poste de "
+                + titre + " chez " + company + ".\n\nCordialement,\n\n" + signature)
     resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
@@ -240,7 +245,7 @@ def generer_lettre(cv_texte, offre):
     )
     corps = resp.choices[0].message.content.strip()
     corps = "\n".join([l for l in corps.split("\n") if not re.search(r"\[.+?\]", l)])
-    return entete + corps + "\n\nCordialement,\n\nPatrice Arnold Sob Feukam\n514-236-4628 | sobpatrice@yahoo.fr\nOttawa, Ontario"
+    return entete + corps + "\n\nCordialement,\n\n" + signature
 
 def scorer_offre(cv_texte, offre):
     if not client:
