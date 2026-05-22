@@ -761,102 +761,117 @@ def get_job_description_http(lien: str) -> str:
 
 
 async def _linkedin_login(page, browser) -> bool:
-    """Auto-login LinkedIn avec email/password. Retourne True si connecté."""
+    """Auto-login LinkedIn avec email/password + JS direct. Retourne True si connecté."""
     if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
         log("Auto-login impossible : LINKEDIN_EMAIL ou LINKEDIN_PASSWORD manquant dans le Setup")
         return False
     log("Auto-login LinkedIn en cours (" + LINKEDIN_EMAIL + ")...")
-    # Essayer d'abord la page où LinkedIn a redirigé, puis /login
-    login_urls = [page.url if "login" in page.url else "", "https://www.linkedin.com/login", "https://www.linkedin.com/uas/login"]
+
+    JS_FILL = """(email, pwd) => {
+        const allInputs = Array.from(document.querySelectorAll('input'));
+        let emailInp = null, pwdInp = null;
+        for (const inp of allInputs) {
+            const t = inp.type || '', n = (inp.name||'').toLowerCase(),
+                  id = (inp.id||'').toLowerCase(), ac = (inp.autocomplete||'').toLowerCase();
+            if (!emailInp && (t==='email' || t==='text' ||
+                n.includes('session_key') || n.includes('email') || n.includes('user') ||
+                id.includes('username') || id.includes('email') || ac.includes('username')))
+                emailInp = inp;
+            else if (!pwdInp && (t==='password' || n.includes('password') || ac.includes('password')))
+                pwdInp = inp;
+        }
+        if (!emailInp || !pwdInp) return false;
+        // Simuler la saisie
+        [emailInp, pwdInp].forEach(inp => inp.focus());
+        emailInp.focus();
+        emailInp.value = email;
+        emailInp.dispatchEvent(new Event('input', {bubbles:true}));
+        emailInp.dispatchEvent(new Event('change', {bubbles:true}));
+        pwdInp.focus();
+        pwdInp.value = pwd;
+        pwdInp.dispatchEvent(new Event('input', {bubbles:true}));
+        pwdInp.dispatchEvent(new Event('change', {bubbles:true}));
+        // Soumettre
+        const btn = document.querySelector('button[type="submit"]') ||
+                    document.querySelector('button[data-litms-control-urn]') ||
+                    Array.from(document.querySelectorAll('button')).find(b =>
+                        (b.innerText||'').toLowerCase().includes('sign') ||
+                        (b.innerText||'').toLowerCase().includes('connect') ||
+                        (b.innerText||'').toLowerCase().includes('se connect'));
+        if (btn) btn.click();
+        return true;
+    }"""
+
+    login_urls = [
+        page.url if ("login" in page.url or "uas" in page.url) else "",
+        "https://www.linkedin.com/login",
+        "https://www.linkedin.com/uas/login",
+    ]
+
     for login_url in login_urls:
         if not login_url:
             continue
         try:
             if page.url != login_url:
-                await page.goto(login_url, wait_until="networkidle", timeout=40000)
-            else:
-                # Déjà sur la page login — attendre que tout soit chargé
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception:
-                    pass
-            await asyncio.sleep(4)
+                await page.goto(login_url, wait_until="domcontentloaded", timeout=35000)
+            await asyncio.sleep(6)
             log("URL login tentée : " + page.url[:80])
         except Exception as e:
             log("Goto login erreur : " + str(e)[:50])
             continue
 
-        # Chercher le champ email avec tous les sélecteurs possibles
-        email_sels = [
-            "#username",
-            "input[name='session_key']",
-            "input[autocomplete='username']",
-            "input[type='email']",
-            "input[autocomplete='email']",
-            "input[id*='username']",
-            "input[id*='email']",
-            "form input[type='text']",
-        ]
-        email_sel = None
-        for sel in email_sels:
+        # Approche 1 : sélecteurs Playwright classiques
+        for sel in ["#username", "input[name='session_key']", "input[autocomplete='username']",
+                    "input[type='email']", "input[autocomplete='email']"]:
             try:
-                await page.wait_for_selector(sel, timeout=6000)
-                email_sel = sel
+                await page.wait_for_selector(sel, timeout=8000)
+                await page.fill(sel, LINKEDIN_EMAIL)
+                log("Email rempli via sélecteur : " + sel)
+                for psel in ["#password", "input[name='session_password']", "input[type='password']"]:
+                    try:
+                        await page.fill(psel, LINKEDIN_PASSWORD)
+                        log("Password rempli via sélecteur : " + psel)
+                        break
+                    except Exception:
+                        continue
+                await asyncio.sleep(random.uniform(0.8, 1.5))
+                await page.click("button[type='submit']")
+                await asyncio.sleep(10)
+                if "login" not in page.url and "uas" not in page.url and "authwall" not in page.url:
+                    log("Connexion réussie (sélecteurs) !")
+                    cookies = await browser.cookies()
+                    _save_cookies(cookies)
+                    return True
                 break
             except Exception:
                 continue
 
-        if not email_sel:
-            try:
-                snippet = (await page.content())[:300].replace("\n", " ")
-                log("Aucun champ email — HTML debut : " + snippet[:150])
-            except Exception:
-                pass
-            continue  # essayer l'URL suivante
+        # Approche 2 : injection JavaScript directe (contourne le React non rendu)
+        log("  Tentative login JS direct...")
+        await asyncio.sleep(3)
+        try:
+            ok = await page.evaluate(JS_FILL, LINKEDIN_EMAIL, LINKEDIN_PASSWORD)
+            if ok:
+                log("  JS direct : formulaire soumis")
+                await asyncio.sleep(12)
+                url_now = page.url
+                log("  URL apres JS login : " + url_now[:80])
+                if "checkpoint" in url_now or "challenge" in url_now:
+                    log("LinkedIn demande une vérification 2FA")
+                    return False
+                if "login" not in url_now and "uas" not in url_now and "authwall" not in url_now:
+                    log("Connexion LinkedIn reussie (JS) !")
+                    cookies = await browser.cookies()
+                    _save_cookies(cookies)
+                    log("Nouveaux cookies sauvegardes (" + str(len(cookies)) + ")")
+                    return True
+            else:
+                log("  JS direct : aucun champ trouvé sur " + page.url[:60])
+        except Exception as e:
+            log("  JS direct erreur : " + str(e)[:60])
 
-        # Remplir email
-        await page.fill(email_sel, LINKEDIN_EMAIL)
-        log("Email rempli via " + email_sel)
-        await asyncio.sleep(random.uniform(0.8, 1.5))
-
-        # Remplir password
-        pass_sel = None
-        for sel in ["#password", "input[name='session_password']", "input[type='password']"]:
-            try:
-                el = page.locator(sel).first
-                if await el.count() > 0:
-                    pass_sel = sel
-                    break
-            except Exception:
-                continue
-        if not pass_sel:
-            log("Champ password introuvable")
-            continue
-        await page.fill(pass_sel, LINKEDIN_PASSWORD)
-        log("Password rempli")
-        await asyncio.sleep(random.uniform(0.5, 1.0))
-
-        # Soumettre
-        await page.click("button[type='submit']")
-        await asyncio.sleep(10)
-        url_now = page.url
-        log("URL apres login : " + url_now[:80])
-
-        if "checkpoint" in url_now or "challenge" in url_now:
-            log("LinkedIn demande une vérification 2FA — rafraichissez vos cookies manuellement")
-            return False
-        if "login" in url_now or "authwall" in url_now or "uas" in url_now:
-            log("Echec connexion — email/password incorrect ou LinkedIn bloque l'IP")
-            return False
-
-        log("Connexion LinkedIn reussie !")
-        cookies = await browser.cookies()
-        _save_cookies(cookies)
-        log("Nouveaux cookies sauvegardes en base (" + str(len(cookies)) + " cookies)")
-        return True
-
-    log("Impossible de se connecter — LinkedIn n'affiche pas de formulaire standard")
-    log("=> Rafraichissez vos cookies LinkedIn dans le Setup (Cookie-Editor)")
+    log("Impossible de se connecter après toutes les tentatives")
+    log("=> Rafraichissez les cookies LinkedIn dans le Setup (Cookie-Editor)")
     return False
 
 
@@ -952,7 +967,7 @@ async def run():
         stealth_args = [
             "--no-sandbox", "--disable-dev-shm-usage",
             "--disable-blink-features=AutomationControlled",
-            "--disable-infobars", "--window-size=1280,720",
+            "--window-size=1920,1080",
             "--disable-extensions", "--disable-gpu",
             "--no-first-run", "--no-default-browser-check",
             "--disable-default-apps", "--disable-background-networking",
@@ -960,18 +975,27 @@ async def run():
             "--disable-renderer-backgrounding",
             "--disable-backgrounding-occluded-windows",
             "--memory-pressure-off", "--renderer-process-limit=1",
+            "--disable-ipc-flooding-protection",
+            "--force-color-profile=srgb",
+            "--metrics-recording-only",
+            "--password-store=basic",
+            "--use-mock-keychain",
+            "--export-tagged-pdf",
+            "--lang=fr-CA",
         ]
         launch_kwargs = dict(
             user_data_dir=PROFILE_PATH,
             headless=HEADLESS,
             args=stealth_args,
-            viewport={"width": 1400, "height": 900},
+            viewport={"width": 1920, "height": 1080},
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            ignore_default_args=["--enable-automation"],
+            locale="fr-CA",
+            timezone_id="America/Toronto",
+            ignore_default_args=["--enable-automation", "--enable-blink-features=IdleDetection"],
         )
         if SMARTPROXY_USER and SMARTPROXY_PASS:
             session_id = "u" + SAAS_USER_ID
@@ -982,12 +1006,56 @@ async def run():
             }
         browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
-        await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3]});
-            Object.defineProperty(navigator, 'languages', {get: () => ['fr-FR','fr','en-US','en']});
-            window.chrome = {runtime: {}};
-        """)
+        STEALTH_JS = """
+() => {
+  // 1. Cache webdriver
+  Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+  // 2. Plugins réalistes
+  const pluginData = [
+    {name:'Chrome PDF Plugin',filename:'internal-pdf-viewer',description:'Portable Document Format'},
+    {name:'Chrome PDF Viewer',filename:'mhjfbmdgcfjbbpaeojofohoefgiehjai',description:''},
+    {name:'Native Client',filename:'internal-nacl-plugin',description:''},
+  ];
+  Object.defineProperty(navigator, 'plugins', {get: () => pluginData});
+  Object.defineProperty(navigator, 'mimeTypes', {get: () => []});
+  // 3. Langues canadiennes
+  Object.defineProperty(navigator, 'languages', {get: () => ['fr-CA','fr','en-CA','en']});
+  // 4. Chrome runtime complet
+  window.chrome = {runtime:{}, loadTimes:()=>{}, csi:()=>{}, app:{}};
+  // 5. Permissions
+  try {
+    const orig = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (p) => p.name==='notifications'
+      ? Promise.resolve({state:Notification.permission}) : orig(p);
+  } catch(e) {}
+  // 6. Hardware
+  Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+  Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
+  Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+  // 7. Écran réaliste
+  ['width','height','availWidth','availHeight'].forEach((k,i) => {
+    Object.defineProperty(screen, k, {get: () => [1920,1080,1920,1040][i]});
+  });
+  Object.defineProperty(screen, 'colorDepth', {get: () => 24});
+  Object.defineProperty(screen, 'pixelDepth', {get: () => 24});
+  // 8. WebGL masqué
+  try {
+    const h = {apply:(t,c,a) => {
+      if(a[0]===37445) return 'Intel Inc.';
+      if(a[0]===37446) return 'Intel(R) UHD Graphics 630';
+      return Reflect.apply(t,c,a);
+    }};
+    WebGLRenderingContext.prototype.getParameter =
+      new Proxy(WebGLRenderingContext.prototype.getParameter, h);
+  } catch(e) {}
+  // 9. Cacher les traces Playwright dans Error stack
+  const err = new Error(); const orig = err.stack;
+  Object.defineProperty(window, 'Error', {value: class extends Error {
+    constructor(m){super(m); if(this.stack) this.stack=this.stack.replace(/playwright/gi,'Chrome');}
+  }});
+}
+"""
+        await page.add_init_script(STEALTH_JS)
         try:
             # Injection cookies LinkedIn
             if LINKEDIN_COOKIES_JSON:
