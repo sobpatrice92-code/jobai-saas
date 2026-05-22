@@ -838,8 +838,18 @@ async def _linkedin_login(page, browser) -> bool:
             log("URL login tentée : " + page.url[:80])
             # Log du contenu de la page pour diagnostic
             try:
-                inputs_count = await page.evaluate("() => document.querySelectorAll('input').length")
-                log("  Inputs trouvés sur la page : " + str(inputs_count))
+                diag = await page.evaluate("""() => {
+                    const inputs = Array.from(document.querySelectorAll('input'));
+                    const visible = inputs.filter(i => i.type !== 'hidden');
+                    return {
+                        total: inputs.length,
+                        visible: visible.length,
+                        types: visible.slice(0,5).map(i => i.type+'|'+i.name+'|'+i.id).join(', ')
+                    };
+                }""")
+                log("  Inputs: total=" + str(diag["total"]) + " visible=" + str(diag["visible"]) + " → " + str(diag["types"])[:80])
+                if diag["visible"] == 0:
+                    log("  ⚠️ Aucun input visible — LinkedIn bloque le navigateur (cookies expirés)")
             except Exception:
                 pass
         except Exception as e:
@@ -1148,6 +1158,8 @@ async def run():
                 pass
             log("URL apres goto feed : " + page.url[:80])
             if "login" in page.url or "authwall" in page.url or "checkpoint" in page.url or "uas" in page.url:
+                log("⚠️ Cookies LinkedIn expirés ou invalides — auto-login tenté")
+                log("   Si Phase 4 échoue: rafraichissez les cookies dans Setup > Cookie-Editor")
                 connecte = await _linkedin_login(page, browser)
                 if not connecte:
                     log("Phase 4 annulée — session LinkedIn invalide")
