@@ -5,6 +5,11 @@ load_dotenv()
 from openai import OpenAI
 from pypdf import PdfReader
 from playwright.async_api import async_playwright
+try:
+    from playwright_stealth import stealth_async
+    _STEALTH_LIB = True
+except ImportError:
+    _STEALTH_LIB = False
 from bs4 import BeautifulSoup
 import asyncio, random, os, csv, smtplib, re, json, requests as _req
 from email.mime.multipart import MIMEMultipart
@@ -824,8 +829,19 @@ async def _linkedin_login(page, browser) -> bool:
         try:
             if page.url != login_url:
                 await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(8)
+            # Attendre que React rende le formulaire (jusqu'à 20s)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                pass
+            await asyncio.sleep(5)
             log("URL login tentée : " + page.url[:80])
+            # Log du contenu de la page pour diagnostic
+            try:
+                inputs_count = await page.evaluate("() => document.querySelectorAll('input').length")
+                log("  Inputs trouvés sur la page : " + str(inputs_count))
+            except Exception:
+                pass
         except Exception as e:
             log("Goto login erreur : " + str(e)[:50])
             continue
@@ -834,7 +850,7 @@ async def _linkedin_login(page, browser) -> bool:
         for sel in ["#username", "input[name='session_key']", "input[autocomplete='username']",
                     "input[type='email']", "input[autocomplete='email']"]:
             try:
-                await page.wait_for_selector(sel, timeout=8000)
+                await page.wait_for_selector(sel, timeout=10000)
                 await page.fill(sel, LINKEDIN_EMAIL)
                 log("Email rempli via sélecteur : " + sel)
                 for psel in ["#password", "input[name='session_password']", "input[type='password']"]:
@@ -844,14 +860,15 @@ async def _linkedin_login(page, browser) -> bool:
                         break
                     except Exception:
                         continue
-                await asyncio.sleep(random.uniform(0.8, 1.5))
+                await asyncio.sleep(random.uniform(1.0, 2.0))
                 await page.click("button[type='submit']")
-                await asyncio.sleep(10)
+                await asyncio.sleep(12)
                 if "login" not in page.url and "uas" not in page.url and "authwall" not in page.url:
                     log("Connexion réussie (sélecteurs) !")
                     cookies = await browser.cookies()
                     _save_cookies(cookies)
                     return True
+                log("Toujours sur login après sélecteurs : " + page.url[:60])
                 break
             except Exception:
                 continue
@@ -863,11 +880,11 @@ async def _linkedin_login(page, browser) -> bool:
             ok = await page.evaluate(JS_FILL, [LINKEDIN_EMAIL, LINKEDIN_PASSWORD])
             if ok:
                 log("  JS direct : formulaire soumis")
-                await asyncio.sleep(12)
+                await asyncio.sleep(15)
                 url_now = page.url
                 log("  URL apres JS login : " + url_now[:80])
                 if "checkpoint" in url_now or "challenge" in url_now:
-                    log("LinkedIn demande une vérification 2FA")
+                    log("LinkedIn demande une vérification 2FA — rafraichissez les cookies")
                     return False
                 if "login" not in url_now and "uas" not in url_now and "authwall" not in url_now:
                     log("Connexion LinkedIn reussie (JS) !")
@@ -875,6 +892,7 @@ async def _linkedin_login(page, browser) -> bool:
                     _save_cookies(cookies)
                     log("Nouveaux cookies sauvegardes (" + str(len(cookies)) + ")")
                     return True
+                log("  JS direct : toujours sur login apres soumission")
             else:
                 log("  JS direct : aucun champ trouvé sur " + page.url[:60])
         except Exception as e:
@@ -1016,6 +1034,12 @@ async def run():
             }
         browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
+        if _STEALTH_LIB:
+            try:
+                await stealth_async(page)
+                log("playwright-stealth appliqué")
+            except Exception as e:
+                log("playwright-stealth erreur (ignoré) : " + str(e)[:40])
         STEALTH_JS = """
 () => {
   // 1. Cache webdriver
@@ -1112,7 +1136,16 @@ async def run():
 
             # Vérifier la session LinkedIn
             await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
             await asyncio.sleep(4)
+            try:
+                page_title = await page.title()
+                log("Titre page feed : " + page_title[:60])
+            except Exception:
+                pass
             log("URL apres goto feed : " + page.url[:80])
             if "login" in page.url or "authwall" in page.url or "checkpoint" in page.url or "uas" in page.url:
                 connecte = await _linkedin_login(page, browser)
