@@ -1035,15 +1035,9 @@ async def run():
             timezone_id="America/Toronto",
             ignore_default_args=["--enable-automation", "--enable-blink-features=IdleDetection"],
         )
-        # Smartproxy résidentiel pour le browser — IP datacenter Railway bloquée par LinkedIn
-        if SMARTPROXY_USER and SMARTPROXY_PASS:
-            session_id = "u" + SAAS_USER_ID
-            launch_kwargs["proxy"] = {
-                "server":   "http://gate.smartproxy.com:10001",
-                "username": SMARTPROXY_USER + "-session-" + session_id,
-                "password": SMARTPROXY_PASS,
-            }
-            log("Browser Phase 4 : Smartproxy résidentiel activé")
+        # Phase 4 sans proxy browser : Smartproxy cause des timeouts >60s pour tunnels HTTPS.
+        # Easy Apply depuis Railway est remplacé par easy_apply_local.py (script PC Nicole).
+        log("Browser Phase 4 : connexion directe (Easy Apply local recommandé)")
         browser = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = browser.pages[0] if browser.pages else await browser.new_page()
         if _STEALTH_LIB:
